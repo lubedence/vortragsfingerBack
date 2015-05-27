@@ -1,0 +1,44 @@
+﻿<Window x:Class="votragsfinger2.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:k="http://schemas.microsoft.com/kinect/2014"
+        xmlns:local="clr-namespace:votragsfinger2;assembly="
+        Title="Vortragsfinger 2" 
+        Height="350" 
+        Width="525"
+        WindowState="Maximized" AllowsTransparency="True" WindowStyle="None" BorderThickness="10" BorderBrush="Red" Icon="v2_icon.ico">
+
+    <Window.Background>
+        <SolidColorBrush Opacity="0.0" Color="White"/>
+    </Window.Background>
+
+    <k:KinectRegion x:Name="kinectRegion">
+        <Grid>
+            <k:KinectUserViewer Grid.Column="1" Width="150" Height="150" HorizontalAlignment="Center" VerticalAlignment="Top" EngagedUserColor="#FF00D1FF" DefaultUserColor="#FF668B8F" ScrollViewer.VerticalScrollBarVisibility="Disabled" Panel.ZIndex="10"/>
+
+            <local:SketchCanvas  
+              x:Name="myCanvas" Background="#02FFFFFF" Panel.ZIndex="1">
+            </local:SketchCanvas>
+
+            <Grid x:Name="navigationRegion" Panel.ZIndex="3" Visibility="Hidden">
+                <Rectangle Fill="#BFFFFFFF">
+                </Rectangle>
+                <local:menu x:Name="kinectMenu" Margin="100,200,100,200"/>
+
+            </Grid>
+
+            <Grid  x:Name="debugDataGrid" Panel.ZIndex="4" Margin="20">
+
+            </Grid>
+
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Bottom" Orientation="Horizontal" Panel.ZIndex="10" Background="#7F6BA5D6">
+                <Button Content="Menu" Width="40" Height="20" Margin="5,5,0,10" Click="Menu_Button_Click"/>
+                <CheckBox Content="erase" Height="20" Margin="30,0,5,0" Checked="Activate_Mouse_Erase_Mode" Unchecked="Activate_Mouse_Draw_Mode"/>
+
+            </StackPanel>
+
+
+        </Grid>
+
+    </k:KinectRegion>
+</Window>
