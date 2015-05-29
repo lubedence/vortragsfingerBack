@@ -73,7 +73,7 @@ namespace votragsfinger2Back
             double xScale = screen.Width / PHIZ_DIMENSION.X;
             double yScale = screen.Height / PHIZ_DIMENSION.Y;
 
-
+            //todo: do not distort ratio
             return new Point(csp.X * xScale, csp.Y * yScale);
         }
 

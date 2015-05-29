@@ -36,6 +36,7 @@
                 <CheckBox Content="erase" Height="20" Margin="30,0,5,0" Checked="Activate_Mouse_Erase_Mode" Unchecked="Activate_Mouse_Draw_Mode"/>
 
             </StackPanel>
+            <Image x:Name="testImg" HorizontalAlignment="Left" Height="424" Margin="84,44,0,0" VerticalAlignment="Top" Width="512" Panel.ZIndex="10"/>
 
 
         </Grid>

@@ -24,6 +24,7 @@ using votragsfinger2.util;
 using System.Windows.Threading;
 using System.Windows.Media.Media3D;
 using votragsfinger2Back;
+using System.Runtime.InteropServices;
 
 namespace votragsfinger2
 {
@@ -57,7 +58,10 @@ namespace votragsfinger2
 
 
         //BACK
-        private Phiz phiz = new Phiz(JointType.HandRight, false);
+        private Phiz phiz = new Phiz(JointType.HandRight, true);
+
+        WriteableBitmap bitmap = new WriteableBitmap(512, 424, 96, 96, PixelFormats.Bgr32, null);
+        private KinectJointFilter allJointFilter = new KinectJointFilter();
 
         public MainWindow()
         {
@@ -77,6 +81,9 @@ namespace votragsfinger2
             dispatcherTimer.Start();
             
             kinectMenu_ThicknessChanged(UserSettings.Instance.LINE_THICKNESS);
+
+
+            testImg.Source = bitmap;
         }
 
         private void kinectMenu_ColorChanged(Color c)
@@ -139,7 +146,7 @@ namespace votragsfinger2
 
             _sensor.Open();
 
-            _reader = _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Body);
+            _reader = _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Body | FrameSourceTypes.BodyIndex);
             _reader.MultiSourceFrameArrived += OnMultiSourceFrameArrived;
 
             LoadGestures();
@@ -231,30 +238,87 @@ namespace votragsfinger2
         {
             var reference = e.FrameReference.AcquireFrame();
 
-            using (var frame = reference.BodyFrameReference.AcquireFrame())
+            using (var bodyFrame = reference.BodyFrameReference.AcquireFrame())
+            using (var bodyIndexFrame = reference.BodyIndexFrameReference.AcquireFrame())
             {
-                if (frame != null)
+                if (bodyFrame != null && bodyIndexFrame != null)
                 {
-                    _bodies = new Body[frame.BodyFrameSource.BodyCount];
-                    frame.GetAndRefreshBodyData(_bodies);
+                    _bodies = new Body[bodyFrame.BodyFrameSource.BodyCount];
+                    bodyFrame.GetAndRefreshBodyData(_bodies);
                     var trackedBody = this._bodies.Where(b => b.IsTracked).FirstOrDefault();
 
                     if (trackedBody != null)
                         {
+                            //depth coordinate mapping to screen coordinates   
+                            myCanvas.updateStrokes(phiz.getDisplayCoordinate(trackedBody), SketchCanvas.UserAction.Draw);
 
-                               
-                                myCanvas.updateStrokes(phiz.getDisplayCoordinate(trackedBody), SketchCanvas.UserAction.Draw);
+                            //information about user for gesture recognition
+                            if (this._gestureReader != null && this._gestureReader.IsPaused)
+                            {
+                                this._gestureSource.TrackingId = trackedBody.TrackingId;
+                                this._gestureReader.IsPaused = false;
+                            }
+                            
+                            //current interacting body
+                            interactingBody = trackedBody;
 
-                                if (this._gestureReader != null && this._gestureReader.IsPaused)
+                            //hand states - just working well if kinect is mounted in front of user
+                            rHand = trackedBody.HandRightState;
+                            lHand = trackedBody.HandLeftState;
+
+                            allJointFilter.UpdateFilter(trackedBody);
+
+                            //hand segmentation - if kinect mounted behind user
+                            int depthFrameWidth = bodyIndexFrame.FrameDescription.Width;
+                            int depthFrameHeight = bodyIndexFrame.FrameDescription.Height;
+                            byte[] _bodyIndexData = new byte[depthFrameWidth * depthFrameHeight];
+
+                            bodyIndexFrame.CopyFrameDataToArray(_bodyIndexData);
+
+                            DepthSpacePoint dspCenter = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(JointType.HandLeft));
+                            DepthSpacePoint dspElbow = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(JointType.ElbowLeft));
+                            DepthSpacePoint dspWrist = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(JointType.ElbowLeft));
+                            double radius = (Math.Sqrt(Math.Pow((dspCenter.X - dspWrist.X),2) + Math.Pow((dspCenter.Y - dspWrist.Y),2)) * 1);
+
+                            int bytesPerPixel = (PixelFormats.Bgr32.BitsPerPixel + 7) / 8;
+
+                            //byte[] pixels = new byte[(xMax - x) * (yMax - y) * bytesPerPixel];
+                            byte[] pixels = new byte[512*424 * bytesPerPixel];
+                        
+                            int pixelIndex = 0;
+
+                            //todo: tiefen/breitensuche bis > radius. radius evtl auch in 3. dimension(z)
+
+                            for (int _y = 0; _y < depthFrameHeight; ++_y)
+                            {
+                                for (int _x = 0; _x < depthFrameWidth; ++_x)
                                 {
-                                    this._gestureSource.TrackingId = trackedBody.TrackingId;
-                                    this._gestureReader.IsPaused = false;
+                                    int depthIndex = (_y * depthFrameWidth) + _x;
+                                    byte isPlayerPixel = _bodyIndexData[depthIndex];
+
+                                    int bmpIndex = depthIndex * bytesPerPixel;
+
+                                    Color c = Colors.Black;
+
+                                    if (isPlayerPixel != 0xff)
+                                    {
+                                        //c = Colors.White;
+                                        if (Math.Sqrt(Math.Pow((dspCenter.X - _x), 2) + Math.Pow((dspCenter.Y - _y), 2)) < radius * 0.7)
+                                            c = Colors.White;
+                                    }
+
+                                    pixels[pixelIndex++] = c.B;
+                                    pixels[pixelIndex++] = c.G;
+                                    pixels[pixelIndex++] = c.R;
+                                    pixelIndex++;
                                 }
+                            }
 
-                                interactingBody = trackedBody;
+                            bitmap.Lock();
+                            Marshal.Copy(pixels, 0, bitmap.BackBuffer, pixels.Length);
+                            bitmap.AddDirtyRect(new Int32Rect(0, 0, 512, 424));
+                            bitmap.Unlock();
 
-                                rHand = trackedBody.HandRightState;
-                                lHand = trackedBody.HandLeftState;
                         }
                     else
                     {
