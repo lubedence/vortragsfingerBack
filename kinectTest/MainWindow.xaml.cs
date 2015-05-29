@@ -275,49 +275,28 @@ namespace votragsfinger2
 
                             bodyIndexFrame.CopyFrameDataToArray(_bodyIndexData);
 
-                            DepthSpacePoint dspCenter = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(JointType.HandLeft));
-                            DepthSpacePoint dspElbow = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(JointType.ElbowLeft));
-                            DepthSpacePoint dspWrist = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(JointType.ElbowLeft));
-                            double radius = (Math.Sqrt(Math.Pow((dspCenter.X - dspWrist.X),2) + Math.Pow((dspCenter.Y - dspWrist.Y),2)) * 1);
-
+                            CameraSpacePoint cspCenter = allJointFilter.getFilteredJoint(JointType.HandLeft);
+                            CameraSpacePoint cspEllbow = allJointFilter.getFilteredJoint(JointType.ElbowLeft);
+                            double cspRadius3d = (Math.Sqrt(Math.Pow((cspCenter.X - cspEllbow.X), 2) + Math.Pow((cspCenter.Y - cspEllbow.Y), 2) + Math.Pow((cspCenter.Z - cspEllbow.Z), 2)));
+                            double cspRadius2d = (Math.Sqrt(Math.Pow((cspCenter.X - cspEllbow.X), 2) + Math.Pow((cspCenter.Y - cspEllbow.Y), 2)));
+                            DepthSpacePoint dspCenter = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(cspCenter);
+                            DepthSpacePoint dspElbow = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(cspEllbow);
+                            double radius = (Math.Sqrt(Math.Pow((dspCenter.X - dspElbow.X), 2) + Math.Pow((dspCenter.Y - dspElbow.Y), 2)));
+                            radius = radius / cspRadius2d * cspRadius3d;
                             int bytesPerPixel = (PixelFormats.Bgr32.BitsPerPixel + 7) / 8;
 
-                            //byte[] pixels = new byte[(xMax - x) * (yMax - y) * bytesPerPixel];
-                            byte[] pixels = new byte[512*424 * bytesPerPixel];
-                        
-                            int pixelIndex = 0;
+                            HandSegmentation bfs = new HandSegmentation(depthFrameWidth, depthFrameHeight);
+                            bfs.searchBFS(_bodyIndexData, (int)dspCenter.X, (int)dspCenter.Y, (int)radius);
 
-                            //todo: tiefen/breitensuche bis > radius. radius evtl auch in 3. dimension(z)
-
-                            for (int _y = 0; _y < depthFrameHeight; ++_y)
-                            {
-                                for (int _x = 0; _x < depthFrameWidth; ++_x)
-                                {
-                                    int depthIndex = (_y * depthFrameWidth) + _x;
-                                    byte isPlayerPixel = _bodyIndexData[depthIndex];
-
-                                    int bmpIndex = depthIndex * bytesPerPixel;
-
-                                    Color c = Colors.Black;
-
-                                    if (isPlayerPixel != 0xff)
-                                    {
-                                        //c = Colors.White;
-                                        if (Math.Sqrt(Math.Pow((dspCenter.X - _x), 2) + Math.Pow((dspCenter.Y - _y), 2)) < radius * 0.7)
-                                            c = Colors.White;
-                                    }
-
-                                    pixels[pixelIndex++] = c.B;
-                                    pixels[pixelIndex++] = c.G;
-                                    pixels[pixelIndex++] = c.R;
-                                    pixelIndex++;
-                                }
-                            }
-
+                            //show segmented hand
+                            byte[] pixels = bfs.getBitmapData(bytesPerPixel);
                             bitmap.Lock();
                             Marshal.Copy(pixels, 0, bitmap.BackBuffer, pixels.Length);
-                            bitmap.AddDirtyRect(new Int32Rect(0, 0, 512, 424));
+                            bitmap.AddDirtyRect(new Int32Rect(0, 0, depthFrameWidth, depthFrameHeight));
                             bitmap.Unlock();
+
+                            bfs = null;
+                            //gesture recognition from segmented hand
 
                         }
                     else
@@ -328,6 +307,16 @@ namespace votragsfinger2
             }
         }
 
+
+        private void recBRSearch(byte[] data, int x, int y, float dist)
+        {
+            int depthIndex = (y * 512) + x;
+            byte isPlayerPixel = data[depthIndex];
+
+            if (isPlayerPixel == 0xff || dist > 30) return;
+
+            
+        }
 
 
        /* private Point phiz(Joint center, Joint hand)

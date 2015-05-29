@@ -93,6 +93,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="HandSegmentation.cs" />
     <Compile Include="JointFilter.cs" />
     <Compile Include="KinectJointFilter.cs" />
     <Compile Include="menu.xaml.cs">
