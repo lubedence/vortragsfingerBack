@@ -25,6 +25,8 @@ using System.Windows.Threading;
 using System.Windows.Media.Media3D;
 using votragsfinger2Back;
 using System.Runtime.InteropServices;
+using Emgu.CV;
+
 
 namespace votragsfinger2
 {
@@ -58,32 +60,38 @@ namespace votragsfinger2
 
 
         //BACK
-        private Phiz phiz = new Phiz(JointType.HandRight, true);
-
-        WriteableBitmap bitmap = new WriteableBitmap(512, 424, 96, 96, PixelFormats.Bgr32, null);
+        private Phiz phiz;
         private KinectJointFilter allJointFilter = new KinectJointFilter();
+        private HandSegmentation bfs = null;
+        private HandState currentCursorBackHandState = HandState.Unknown; 
 
         public MainWindow()
         {
             InitializeComponent();
+            //read/set user parameters
             UserSettings.Instance.parseIniFile();
-            KinectSetup();
+            //init phiz
+            phiz = new Phiz(JointType.HandRight, UserSettings.Instance.IS_KINECT_BEHIND_USER); //TODO: automatic detection which hand is interacting
+            //minimize to tray
             MinimizeToTray.Enable(this);
-            lastGestureTime.Start();
 
+            //kinect sensor setup
+            KinectSetup();
+            
+            //menu handlers
             kinectMenu.ColorChanged += new menu.ColorChangedEventHandler(kinectMenu_ColorChanged);
             kinectMenu.ThicknessChanged += new menu.ThicknessChangedEventHandler(kinectMenu_ThicknessChanged);
             kinectMenu.DrawTypeChanged += new menu.DrawTypeChangedEventHandler(kinectMenu_DrawTypeChanged);
+            //read and set line thickness from user settings
+            kinectMenu_ThicknessChanged(UserSettings.Instance.LINE_THICKNESS);
 
+            //hide mouse after short time period
             this.MouseMove += new MouseEventHandler(mainWindow_MouseMove);
             dispatcherTimer.Tick += new EventHandler(dispatcherTimer_Tick);
             dispatcherTimer.Interval = new TimeSpan(0, 0, 1);
             dispatcherTimer.Start();
             
-            kinectMenu_ThicknessChanged(UserSettings.Instance.LINE_THICKNESS);
-
-
-            testImg.Source = bitmap;
+            
         }
 
         private void kinectMenu_ColorChanged(Color c)
@@ -134,15 +142,16 @@ namespace votragsfinger2
                 return false;
             }
 
-
-            //KinectRegion.SetKinectRegion(this, kinectRegion);
-
-            //App app = ((App)Application.Current);
-            //app.KinectRegion = kinectRegion;
-            //kinectRegion.KinectSensor = _sensor;
-
-            //this.Loaded += Window_Loaded;
-
+            //kinect sdk phiz pointer
+            if (!UserSettings.Instance.IS_KINECT_BEHIND_USER)
+            {
+                KinectRegion.SetKinectRegion(this, kinectRegion);
+                App app = ((App)Application.Current);
+                app.KinectRegion = kinectRegion;
+                kinectRegion.KinectSensor = _sensor;
+                KinectCoreWindow kinectCoreWindow = KinectCoreWindow.GetForCurrentThread();
+                kinectCoreWindow.PointerMoved += kinectCoreWindow_PointerMoved;
+            }
 
             _sensor.Open();
 
@@ -157,10 +166,7 @@ namespace votragsfinger2
 
         void LoadGestures()
         {
-            if (UserSettings.Instance.GESTURE_PATH.CompareTo("null") == 0)
-                return;
-
-            VisualGestureBuilderDatabase db = new VisualGestureBuilderDatabase(@UserSettings.Instance.GESTURE_PATH);
+            VisualGestureBuilderDatabase db = new VisualGestureBuilderDatabase(@"gestures/gestures1.gbd");
             this.openingGesture = db.AvailableGestures.Where(g => g.Name == "HandsApart").Single();
             this.closingGesture = db.AvailableGestures.Where(g => g.Name == "HandsTogether").Single();
 
@@ -173,7 +179,9 @@ namespace votragsfinger2
 
             this._gestureReader = this._gestureSource.OpenReader();
             this._gestureReader.IsPaused = true;
-            this._gestureReader.FrameArrived += OnGestureFrameArrived; 
+            this._gestureReader.FrameArrived += OnGestureFrameArrived;
+
+            lastGestureTime.Start();
         }
 
         void OnTrackingIdLost(object sender, TrackingIdLostEventArgs e)
@@ -249,9 +257,6 @@ namespace votragsfinger2
 
                     if (trackedBody != null)
                         {
-                            //depth coordinate mapping to screen coordinates   
-                            myCanvas.updateStrokes(phiz.getDisplayCoordinate(trackedBody), SketchCanvas.UserAction.Draw);
-
                             //information about user for gesture recognition
                             if (this._gestureReader != null && this._gestureReader.IsPaused)
                             {
@@ -285,19 +290,15 @@ namespace votragsfinger2
                             radius = radius / cspRadius2d * cspRadius3d;
                             int bytesPerPixel = (PixelFormats.Bgr32.BitsPerPixel + 7) / 8;
 
-                            HandSegmentation bfs = new HandSegmentation(depthFrameWidth, depthFrameHeight);
+                            if(bfs == null)
+                                bfs = new HandSegmentation(depthFrameWidth, depthFrameHeight);
                             bfs.searchBFS(_bodyIndexData, (int)dspCenter.X, (int)dspCenter.Y, (int)radius);
 
-                            //show segmented hand
-                            byte[] pixels = bfs.getBitmapData(bytesPerPixel);
-                            bitmap.Lock();
-                            Marshal.Copy(pixels, 0, bitmap.BackBuffer, pixels.Length);
-                            bitmap.AddDirtyRect(new Int32Rect(0, 0, depthFrameWidth, depthFrameHeight));
-                            bitmap.Unlock();
+                            rHand = lHand = bfs.ExtractContourAndHull();
+                            
+                            //testImg.Source = BitmapSourceConvert.ToBitmapSource(bfs.visOutput);
 
-                            bfs = null;
-                            //gesture recognition from segmented hand
-
+                            canvasInteraction(phiz.getDisplayCoordinate(trackedBody), HandType.LEFT);
                         }
                     else
                     {
@@ -305,45 +306,6 @@ namespace votragsfinger2
                     }
                 }
             }
-        }
-
-
-        private void recBRSearch(byte[] data, int x, int y, float dist)
-        {
-            int depthIndex = (y * 512) + x;
-            byte isPlayerPixel = data[depthIndex];
-
-            if (isPlayerPixel == 0xff || dist > 30) return;
-
-            
-        }
-
-
-       /* private Point phiz(Joint center, Joint hand)
-        {
-
-
-
-            //rotate hand to be aligned with the center(head) on the X axes.
-            Vector3D dist = (accumulatedCenter - handV);
-            Vector3D hand_CenterAsOrigin = handV - accumulatedCenter;
-            double angle = Math.Atan(hand_CenterAsOrigin.Z / hand_CenterAsOrigin.X);
-            Vector3D hand_rotated = new Vector3D(hand_CenterAsOrigin.Z * Math.Sin(angle) + hand_CenterAsOrigin.X * Math.Cos(angle), hand_CenterAsOrigin.Y, hand_CenterAsOrigin.Z * Math.Cos(angle) - hand_CenterAsOrigin.X * Math.Sin(angle));
-            //hand_rotated += dist;
-
-            //calc point on display in relation to center(head)
-
-
-           // dist = (new Vector3D(-0.10, 0.30, 0) - hand_rotated);
-            dist = (accumulatedCenter + new Vector3D(-0.10, 0.30, 0) - handV);
-        }*/
-
-
-
-        private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
-            KinectCoreWindow kinectCoreWindow = KinectCoreWindow.GetForCurrentThread();
-            kinectCoreWindow.PointerMoved += kinectCoreWindow_PointerMoved;
         }
 
         private void kinectCoreWindow_PointerMoved(object sender, KinectPointerEventArgs args)
@@ -356,22 +318,80 @@ namespace votragsfinger2
             Point pointRelativeToKinectRegion = new Point(kinectPointerPoint.Position.X * kinectRegion.ActualWidth, kinectPointerPoint.Position.Y * kinectRegion.ActualHeight);
 
             //CANVAS INTERACTION
+            canvasInteraction(pointRelativeToKinectRegion, kinectPointerPoint.Properties.HandType);
+
+        }
+
+        private void canvasInteraction(Point p,  HandType ht)
+        {
             if (!isMenuOpen)
             {
-                if ((kinectPointerPoint.Properties.HandType == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_MOVE) || (kinectPointerPoint.Properties.HandType == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_MOVE))
+                if ((ht == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_MOVE) || (ht == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_MOVE))
                 {
-                    myCanvas.updateStrokes(pointRelativeToKinectRegion, SketchCanvas.UserAction.Move);
+                    myCanvas.updateStrokes(p, SketchCanvas.UserAction.Move);
                 }
-                else if ((kinectPointerPoint.Properties.HandType == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_DRAW) || (kinectPointerPoint.Properties.HandType == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_DRAW))
+                else if ((ht == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_DRAW) || (ht == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_DRAW))
                 {
-                    myCanvas.updateStrokes(pointRelativeToKinectRegion, SketchCanvas.UserAction.Draw);
+                    myCanvas.updateStrokes(p, SketchCanvas.UserAction.Draw);
                 }
-                else if ((kinectPointerPoint.Properties.HandType == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_RUBBER) || (kinectPointerPoint.Properties.HandType == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_RUBBER))
+                else if ((ht == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_RUBBER) || (ht == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_RUBBER))
                 {
-                    myCanvas.updateStrokes(pointRelativeToKinectRegion, SketchCanvas.UserAction.Cancel);
+                    myCanvas.updateStrokes(p, SketchCanvas.UserAction.Cancel);
                 }
+
+                setInteractionCursorBack(p, ht);
+            }
+        }
+
+        private void setInteractionCursorBack(Point p, HandType ht)
+        {
+            HandState hs = HandState.Unknown;
+
+            if (ht == HandType.RIGHT)
+                hs = rHand;
+            else if (ht == HandType.LEFT)
+                hs = lHand;
+
+            if (currentCursorBackHandState != hs)
+            {
+                if (hs == HandState.Open)
+                {
+                    interactionCursorBack.Source = new BitmapImage(new Uri("img/cursor.png", UriKind.Relative));
+                }
+                else if (hs == HandState.Lasso)
+                {
+                    interactionCursorBack.Source = new BitmapImage(new Uri("img/cursor_lasso.png", UriKind.Relative));
+                }
+                else if (hs == HandState.Closed)
+                {
+                    interactionCursorBack.Source = new BitmapImage(new Uri("img/cursor_closed.png", UriKind.Relative));
+                }
+                else
+                {
+                    interactionCursorBack.Visibility = Visibility.Hidden;
+                    return;
+                }
+
+                if (ht == HandType.RIGHT)
+                {
+
+                    interactionCursorBack.RenderTransformOrigin = new Point(0.5, 0.5);
+                    ScaleTransform flipTrans = new ScaleTransform();
+                    flipTrans.ScaleX = -1;
+                    interactionCursorBack.RenderTransform = flipTrans;
+                }
+
+                interactionCursorBack.Visibility = Visibility.Visible;
             }
 
+
+            double offsetX = interactionCursorBack.Width;
+            double offsetY = interactionCursorBack.Height;
+
+            if (double.IsNaN(offsetX) || double.IsNaN(offsetY))
+                offsetX = offsetY = 0;
+
+            interactionCursorBack.Margin = new Thickness(p.X - offsetX / 2, p.Y - offsetY / 2, 0, 0);
         }
 
         private void showMenu()
@@ -421,5 +441,29 @@ namespace votragsfinger2
             myCanvas.EditingMode = InkCanvasEditingMode.Ink;
         }
 
+    }
+
+
+    public static class BitmapSourceConvert
+    {
+        [DllImport("gdi32")]
+        private static extern int DeleteObject(IntPtr o);
+
+        public static BitmapSource ToBitmapSource(IImage image)
+        {
+            using (System.Drawing.Bitmap source = image.Bitmap)
+            {
+                IntPtr ptr = source.GetHbitmap();
+
+                BitmapSource bs = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                    ptr,
+                    IntPtr.Zero,
+                    Int32Rect.Empty,
+                    System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+
+                DeleteObject(ptr);
+                return bs;
+            }
+        }
     }
 }

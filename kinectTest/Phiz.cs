@@ -16,15 +16,11 @@ namespace votragsfinger2Back
         private JointType originJointType = JointType.Head;
         private JointType interactionJointType = JointType.HandLeft;
 
-        private JointFilter originJointFilter = new JointFilter();
-        private JointFilter originJointFilterSL = new JointFilter();
-        private JointFilter originJointFilterSR = new JointFilter();
-
+        private KinectJointStabilization originJointFilter = new KinectJointStabilization();
         private KinectJointFilter allJointFilter = new KinectJointFilter(0.5f,0.3f, 0.2f, 0.4f, 0.3f);
 
         private Vector3D PHIZ_DIMENSION = new Vector3D(0.3, 0.2, 0);
         private Vector3D PHIZ_OFFSET = new Vector3D(-0.3, -0.1, 0);
-
 
         public Phiz(JointType interactionJointType, bool backTracking)
         {
@@ -56,8 +52,6 @@ namespace votragsfinger2Back
 
             //calc point on display in relation to center(head)
             Vector3D dist = (centerV + PHIZ_OFFSET - handV);
-
-            Console.WriteLine(dist.ToString());
 
             return mapCameraSpacePointToScreenCoordinates(dist);
         }

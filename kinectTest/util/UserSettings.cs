@@ -24,10 +24,11 @@ namespace votragsfinger2.util
         public int RUBBER_SIZE = 30;
         public int USER_ACTION_MIN_TIME = 250;
 
-        public string GESTURE_PATH = @"gestures/gestures1.gbd";
         public HandState GESTURE_DRAW = HandState.Lasso;
         public HandState GESTURE_RUBBER = HandState.Closed;
         public HandState GESTURE_MOVE = HandState.Open;
+
+        public bool IS_KINECT_BEHIND_USER = true;
 
         private static UserSettings instance;
 
@@ -64,8 +65,6 @@ namespace votragsfinger2.util
                     source.Configs["Gestures"].Set("Minimum time", GESTURE_MIN_TIME);
                 if (source.Configs["Gestures"].GetDouble("Minimum confidence", GESTURE_MIN_CONFIDENCE) < 0 || source.Configs["Gestures"].GetDouble("Minimum confidence", GESTURE_MIN_CONFIDENCE) > 1)
                     source.Configs["Gestures"].Set("Minimum confidence", GESTURE_MIN_CONFIDENCE);
-                if (source.Configs["Gestures"].Get("path", GESTURE_PATH).CompareTo("null") == 0 && !fileExists(source.Configs["Gestures"].Get("path", GESTURE_PATH)))
-                    source.Configs["Gestures"].Set("path", "null");
                 if (source.Configs["Drawing"].GetInt("Line thickness", LINE_THICKNESS) < 5 || source.Configs["Drawing"].GetInt("Line thickness", LINE_THICKNESS) > 100)
                     source.Configs["Drawing"].Set("Line thickness", LINE_THICKNESS);
                 if (source.Configs["Drawing"].GetInt("Resume threshold", LINE_RESUME_THRESHOLD) < 0 || source.Configs["Drawing"].GetInt("Resume threshold", LINE_RESUME_THRESHOLD) > 200)
@@ -86,6 +85,7 @@ namespace votragsfinger2.util
 
                 GESTURE_MIN_TIME = source.Configs["Gestures"].GetInt("Minimum time", GESTURE_MIN_TIME);
                 GESTURE_MIN_CONFIDENCE = source.Configs["Gestures"].GetDouble("Minimum confidence", GESTURE_MIN_CONFIDENCE);
+                IS_KINECT_BEHIND_USER = source.Configs["Gestures"].GetBoolean("Kinect behind user", IS_KINECT_BEHIND_USER);
                 LINE_THICKNESS = source.Configs["Drawing"].GetInt("Line thickness", LINE_THICKNESS);
                 LINE_RESUME_THRESHOLD = source.Configs["Drawing"].GetInt("Resume threshold", LINE_RESUME_THRESHOLD);
                 LINE_FREEHAND_STRAIGHT_MIN_DIST = source.Configs["Drawing"].GetInt("Freehand straight minimum distance", LINE_FREEHAND_STRAIGHT_MIN_DIST);
@@ -93,6 +93,7 @@ namespace votragsfinger2.util
                 SMOOTHING = source.Configs["Drawing"].GetDouble("Smoothing", SMOOTHING);
                 RUBBER_SIZE = source.Configs["Drawing"].GetInt("Rubber size", RUBBER_SIZE);
                 USER_ACTION_MIN_TIME = source.Configs["Drawing"].GetInt("Minimum time between user action", USER_ACTION_MIN_TIME);
+                
 
                 if (source.Configs["Gestures"].Get("draw hand state") != null && source.Configs["Gestures"].Get("rubber hand state") != null && source.Configs["Gestures"].Get("move hand state") != null)
                 {
@@ -131,6 +132,7 @@ namespace votragsfinger2.util
                 config.Set("draw hand state", GESTURE_DRAW.ToString());
                 config.Set("rubber hand state", GESTURE_RUBBER.ToString());
                 config.Set("move hand state", GESTURE_MOVE.ToString());
+                config.Set("Kinect behind user", IS_KINECT_BEHIND_USER.ToString());
 
                 config = source.AddConfig("Drawing");
                 config.Set("Line thickness", LINE_THICKNESS);
