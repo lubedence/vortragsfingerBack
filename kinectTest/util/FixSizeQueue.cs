@@ -21,5 +21,17 @@ namespace votragsfinger2Back.util
                 base.Dequeue();
         }
 
+
+        public new string ToString()
+        {
+            T[] arr = base.ToArray();
+            string s = "";
+            for (int i = 0; i < arr.Length; i++)
+            {
+                s += arr[i].ToString() + " ";
+            }
+
+            return s;
+        }
     }
 }

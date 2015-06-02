@@ -26,6 +26,7 @@ using System.Windows.Media.Media3D;
 using votragsfinger2Back;
 using System.Runtime.InteropServices;
 using Emgu.CV;
+using votragsfinger2Back.util;
 
 
 namespace votragsfinger2
@@ -61,8 +62,6 @@ namespace votragsfinger2
 
         //BACK
         private Phiz phiz;
-        private KinectJointFilter allJointFilter = new KinectJointFilter();
-        private HandSegmentation bfs = null;
         private HandState currentCursorBackHandState = HandState.Unknown; 
 
         public MainWindow()
@@ -70,8 +69,6 @@ namespace votragsfinger2
             InitializeComponent();
             //read/set user parameters
             UserSettings.Instance.parseIniFile();
-            //init phiz
-            phiz = new Phiz(JointType.HandRight, UserSettings.Instance.IS_KINECT_BEHIND_USER); //TODO: automatic detection which hand is interacting
             //minimize to tray
             MinimizeToTray.Enable(this);
 
@@ -143,7 +140,7 @@ namespace votragsfinger2
             }
 
             //kinect sdk phiz pointer
-            if (!UserSettings.Instance.IS_KINECT_BEHIND_USER)
+            if (UserSettings.Instance.IS_KINECTREGION_USED)
             {
                 KinectRegion.SetKinectRegion(this, kinectRegion);
                 App app = ((App)Application.Current);
@@ -151,8 +148,17 @@ namespace votragsfinger2
                 kinectRegion.KinectSensor = _sensor;
                 KinectCoreWindow kinectCoreWindow = KinectCoreWindow.GetForCurrentThread();
                 kinectCoreWindow.PointerMoved += kinectCoreWindow_PointerMoved;
+                
             }
+            else
+            {
+                //rough-and-ready way to disable kinect region (hide the cursor)
+                kinectRegion.CursorSpriteSheetDefinition = new CursorSpriteSheetDefinition(new Uri("img/cursor.png", UriKind.Relative), 0, 0, 0, 0);
 
+                //init own phiz and hand state recognition
+                phiz = new Phiz(UserSettings.Instance.IS_KINECT_BEHIND_USER); 
+            }
+           
             _sensor.Open();
 
             _reader = _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Body | FrameSourceTypes.BodyIndex);
@@ -267,38 +273,23 @@ namespace votragsfinger2
                             //current interacting body
                             interactingBody = trackedBody;
 
-                            //hand states - just working well if kinect is mounted in front of user
-                            rHand = trackedBody.HandRightState;
-                            lHand = trackedBody.HandLeftState;
+                            if (UserSettings.Instance.IS_KINECTREGION_USED)
+                            {
+                                //hand states - just working well if kinect is mounted in front of user
+                                rHand = trackedBody.HandRightState;
+                                lHand = trackedBody.HandLeftState;
+                            }
+                            else
+                            {
+                                if (phiz.checkForInteraction(trackedBody, bodyIndexFrame))
+                                {
+                                    rHand = phiz.getHandState(HandType.RIGHT);
+                                    lHand = phiz.getHandState(HandType.LEFT);
+                                    canvasInteraction(phiz.getInteractionPoint(), phiz.getInteractionHand());
 
-                            allJointFilter.UpdateFilter(trackedBody);
-
-                            //hand segmentation - if kinect mounted behind user
-                            int depthFrameWidth = bodyIndexFrame.FrameDescription.Width;
-                            int depthFrameHeight = bodyIndexFrame.FrameDescription.Height;
-                            byte[] _bodyIndexData = new byte[depthFrameWidth * depthFrameHeight];
-
-                            bodyIndexFrame.CopyFrameDataToArray(_bodyIndexData);
-
-                            CameraSpacePoint cspCenter = allJointFilter.getFilteredJoint(JointType.HandLeft);
-                            CameraSpacePoint cspEllbow = allJointFilter.getFilteredJoint(JointType.ElbowLeft);
-                            double cspRadius3d = (Math.Sqrt(Math.Pow((cspCenter.X - cspEllbow.X), 2) + Math.Pow((cspCenter.Y - cspEllbow.Y), 2) + Math.Pow((cspCenter.Z - cspEllbow.Z), 2)));
-                            double cspRadius2d = (Math.Sqrt(Math.Pow((cspCenter.X - cspEllbow.X), 2) + Math.Pow((cspCenter.Y - cspEllbow.Y), 2)));
-                            DepthSpacePoint dspCenter = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(cspCenter);
-                            DepthSpacePoint dspElbow = _sensor.CoordinateMapper.MapCameraPointToDepthSpace(cspEllbow);
-                            double radius = (Math.Sqrt(Math.Pow((dspCenter.X - dspElbow.X), 2) + Math.Pow((dspCenter.Y - dspElbow.Y), 2)));
-                            radius = radius / cspRadius2d * cspRadius3d;
-                            int bytesPerPixel = (PixelFormats.Bgr32.BitsPerPixel + 7) / 8;
-
-                            if(bfs == null)
-                                bfs = new HandSegmentation(depthFrameWidth, depthFrameHeight);
-                            bfs.searchBFS(_bodyIndexData, (int)dspCenter.X, (int)dspCenter.Y, (int)radius);
-
-                            rHand = lHand = bfs.ExtractContourAndHull();
-                            
-                            //testImg.Source = BitmapSourceConvert.ToBitmapSource(bfs.visOutput);
-
-                            canvasInteraction(phiz.getDisplayCoordinate(trackedBody), HandType.LEFT);
+                                    testImg.Source = BitmapSourceConvert.ToBitmapSource(phiz.getVisOutputFromHandSegmentation(phiz.getInteractionHand()));
+                                }
+                            }
                         }
                     else
                     {
@@ -339,11 +330,12 @@ namespace votragsfinger2
                     myCanvas.updateStrokes(p, SketchCanvas.UserAction.Cancel);
                 }
 
-                setInteractionCursorBack(p, ht);
+                if(!UserSettings.Instance.IS_KINECTREGION_USED)
+                    setInteractionCursor(p, ht);
             }
         }
 
-        private void setInteractionCursorBack(Point p, HandType ht)
+        private void setInteractionCursor(Point p, HandType ht)
         {
             HandState hs = HandState.Unknown;
 
@@ -372,13 +364,17 @@ namespace votragsfinger2
                     return;
                 }
 
-                if (ht == HandType.RIGHT)
+                if (ht == HandType.RIGHT && UserSettings.Instance.IS_KINECT_BEHIND_USER || ht == HandType.LEFT && !UserSettings.Instance.IS_KINECT_BEHIND_USER)
                 {
 
                     interactionCursorBack.RenderTransformOrigin = new Point(0.5, 0.5);
                     ScaleTransform flipTrans = new ScaleTransform();
                     flipTrans.ScaleX = -1;
                     interactionCursorBack.RenderTransform = flipTrans;
+                }
+                else
+                {
+                    interactionCursorBack.RenderTransform = null;
                 }
 
                 interactionCursorBack.Visibility = Visibility.Visible;
@@ -441,29 +437,5 @@ namespace votragsfinger2
             myCanvas.EditingMode = InkCanvasEditingMode.Ink;
         }
 
-    }
-
-
-    public static class BitmapSourceConvert
-    {
-        [DllImport("gdi32")]
-        private static extern int DeleteObject(IntPtr o);
-
-        public static BitmapSource ToBitmapSource(IImage image)
-        {
-            using (System.Drawing.Bitmap source = image.Bitmap)
-            {
-                IntPtr ptr = source.GetHbitmap();
-
-                BitmapSource bs = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                    ptr,
-                    IntPtr.Zero,
-                    Int32Rect.Empty,
-                    System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-
-                DeleteObject(ptr);
-                return bs;
-            }
-        }
     }
 }

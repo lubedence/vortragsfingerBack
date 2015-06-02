@@ -27,8 +27,9 @@ namespace votragsfinger2Back
         private Seq<MCvConvexityDefect> defects;
         private MCvBox2D box;
         public Image<Bgr, byte> visOutput;
+        public bool isVisOutputActive = false;
 
-        private FixSizeQueue<byte> filterHandState = new FixSizeQueue<byte>(10);
+        private FixSizeQueue<byte> filterHandState = new FixSizeQueue<byte>(14);
 
         public HandSegmentation(int width, int height)
         {
@@ -71,7 +72,7 @@ namespace votragsfinger2Back
 
 
         
-        public byte[] searchBFS(byte[] data, int x, int y, int dist)
+        public byte[] searchFloodFill(byte[] data, int x, int y, int dist)
         {
             inputData = data;
             searchedData = new byte[data.Length];
@@ -138,7 +139,7 @@ namespace votragsfinger2Back
 
 
 
-        public Microsoft.Kinect.HandState ExtractContourAndHull()
+        public Microsoft.Kinect.HandState ExtractHandState()
         {
             byte[, ,] pixels = new byte[height, width, 1];
 
@@ -154,12 +155,12 @@ namespace votragsfinger2Back
             }
 
 
-            return ExtractContourAndHull(new Image<Gray, byte>(pixels));
+            return ExtractHandState(new Image<Gray, byte>(pixels));
         }
 
 
 
-        private Microsoft.Kinect.HandState ExtractContourAndHull(Image<Gray, byte> handSegment)
+        private Microsoft.Kinect.HandState ExtractHandState(Image<Gray, byte> handSegment)
         {
             using (MemStorage storage = new MemStorage())
             {
@@ -167,6 +168,7 @@ namespace votragsfinger2Back
                 Contour<Point> biggestContour = null;
 
                 Double biggestContourArea = 0;
+                //could be removed - there should always be just one blob
                 while (contours != null)
                 {
                     if (contours.Area > biggestContourArea)
@@ -177,13 +179,13 @@ namespace votragsfinger2Back
                     contours = contours.HNext;
                 }
 
-                visOutput = new Image<Bgr, byte>(handSegment.Bitmap);
+                if (isVisOutputActive)
+                    visOutput = new Image<Bgr, byte>(handSegment.Bitmap);
 
                 if (biggestContour != null)
                 {
-                    //currentFrame.Draw(biggestContour, new Bgr(Color.DarkViolet), 2);
                     Contour<Point> currentContour = biggestContour.ApproxPoly(biggestContour.Perimeter * 0.0025, storage);
-                    //visOutput.Draw(currentContour, new Bgr(System.Drawing.Color.LimeGreen), 2);
+                    //visOutput.Draw(currentContour, new Bgr(System.Drawing.Color.Green), 2);
                     biggestContour = currentContour;
 
 
@@ -191,28 +193,12 @@ namespace votragsfinger2Back
                     box = biggestContour.GetMinAreaRect();
                     PointF[] points = box.GetVertices();
 
-                    //visOutput.Draw(box.MinAreaRect(), new Bgr(200, 0, 0), 1);
-
                     Point[] ps = new Point[points.Length];
                     for (int i = 0; i < points.Length; i++)
                         ps[i] = new Point((int)points[i].X, (int)points[i].Y);
 
-                    //visOutput.DrawPolyline(hull.ToArray(), true, new Bgr(200, 125, 75), 2);
-                    visOutput.Draw(new CircleF(new PointF(xSeed, ySeed), 3), new Bgr(200, 125, 75), 2);
-
-                    //ellip.MCvBox2D= CvInvoke.cvFitEllipse2(biggestContour.Ptr);
-                    //currentFrame.Draw(new Ellipse(ellip.MCvBox2D), new Bgr(Color.LavenderBlush), 3);
-
-                    PointF center;
-                    float radius;
-                    //CvInvoke.cvMinEnclosingCircle(biggestContour.Ptr, out  center, out  radius);
-                    //currentFrame.Draw(new CircleF(center, radius), new Bgr(Color.Gold), 2);
-
-                    //currentFrame.Draw(new CircleF(new PointF(ellip.MCvBox2D.center.X, ellip.MCvBox2D.center.Y), 3), new Bgr(100, 25, 55), 2);
-                    //currentFrame.Draw(ellip, new Bgr(Color.DeepPink), 2);
-
-                    //CvInvoke.cvEllipse(currentFrame, new Point((int)ellip.MCvBox2D.center.X, (int)ellip.MCvBox2D.center.Y), new System.Drawing.Size((int)ellip.MCvBox2D.size.Width, (int)ellip.MCvBox2D.size.Height), ellip.MCvBox2D.angle, 0, 360, new MCvScalar(120, 233, 88), 1, Emgu.CV.CvEnum.LINE_TYPE.EIGHT_CONNECTED, 0);
-                    //currentFrame.Draw(new Ellipse(new PointF(box.center.X, box.center.Y), new SizeF(box.size.Height, box.size.Width), box.angle), new Bgr(0, 0, 0), 2);
+                    if (isVisOutputActive)
+                        visOutput.Draw(new CircleF(new PointF(xSeed, ySeed), 3), new Bgr(200, 125, 75), 2);
 
 
                     Seq<Point> filteredHull = new Seq<Point>(storage);
@@ -241,17 +227,6 @@ namespace votragsfinger2Back
 
            MCvConvexityDefect[] defectArray = defects.ToArray();
 
-           #region hull drawing
-           //for (int i = 0; i < filteredHull.Total; i++)
-           //{
-           //    PointF hullPoint = new PointF((float)filteredHull[i].X,
-           //                                  (float)filteredHull[i].Y);
-           //    CircleF hullCircle = new CircleF(hullPoint, 4);
-           //    currentFrame.Draw(hullCircle, new Bgr(Color.Aquamarine), 2);
-           //}
-           #endregion
-
-           #region defects drawing
            for (int i = 0; i < defects.Total; i++)
            {
                PointF startPoint = new PointF((float)defectArray[i].StartPoint.X,
@@ -267,31 +242,17 @@ namespace votragsfinger2Back
 
                LineSegment2D depthEndLine = new LineSegment2D(defectArray[i].DepthPoint, defectArray[i].EndPoint);
 
-               CircleF startCircle = new CircleF(startPoint, 5f);
 
-               CircleF depthCircle = new CircleF(depthPoint, 5f);
 
-               CircleF endCircle = new CircleF(endPoint, 5f);
-
-               
-
-               //Custom heuristic based on some experiment, double check it before use
-               if ((startPoint.Y - ySeed < 0 && depthPoint.Y - ySeed < 0) && (startCircle.Center.Y < depthCircle.Center.Y) && (Math.Sqrt(Math.Pow(startCircle.Center.X - depthCircle.Center.X, 2) + Math.Pow(startCircle.Center.Y - depthCircle.Center.Y, 2)) > maxDist / 7))
+               //Very simple & weak heuristic for finger detection 
+               if ((startPoint.Y - ySeed < 0 && depthPoint.Y - ySeed < maxDist / 8) && (startPoint.Y < depthPoint.Y) && (Math.Sqrt(Math.Pow(startPoint.X - depthPoint.X, 2) + Math.Pow(startPoint.Y - depthPoint.Y, 2)) > maxDist / 8))
                {
                    fingerNum++;
-                   visOutput.Draw(startDepthLine, new Bgr(System.Drawing.Color.Green), 2);
-                   //currentFrame.Draw(depthEndLine, new Bgr(Color.Magenta), 2);
+                   if (isVisOutputActive)
+                        visOutput.Draw(startDepthLine, new Bgr(System.Drawing.Color.Green), 2);
                }
 
-
-               //visOutput.Draw(startCircle, new Bgr(System.Drawing.Color.Red), 2);
-               //visOutput.Draw(depthCircle, new Bgr(System.Drawing.Color.Yellow), 5);
-               //currentFrame.Draw(endCircle, new Bgr(Color.DarkBlue), 4);
            }
-           #endregion
-
-           //MCvFont font = new MCvFont(Emgu.CV.CvEnum.FONT.CV_FONT_HERSHEY_DUPLEX, 5d, 5d);
-           //visOutput.Draw(fingerNum.ToString(), ref font, new Point(50, 150), new Bgr(System.Drawing.Color.White));
 
            return getHandStateFromFingerAmount(fingerNum);
        }
@@ -301,13 +262,14 @@ namespace votragsfinger2Back
             filterHandState.Enqueue((byte)fingers);
 
             byte[] arr = filterHandState.ToArray();
+            
+            int mode = arr.GroupBy(x => x).OrderByDescending(g => g.Count()).First().Key;
 
-            var groups = arr.GroupBy(v => v);
-            int maxCount = groups.Max(g => g.Count());
-            int mode = groups.First(g => g.Count() == maxCount).Key;
-
-            MCvFont font = new MCvFont(Emgu.CV.CvEnum.FONT.CV_FONT_HERSHEY_DUPLEX, 5d, 5d);
-            visOutput.Draw(fingers.ToString() + "::" + mode.ToString(), ref font, new Point(50, 150), new Bgr(System.Drawing.Color.White));
+            if (isVisOutputActive)
+            {
+                MCvFont font = new MCvFont(Emgu.CV.CvEnum.FONT.CV_FONT_HERSHEY_DUPLEX, 2d, 2d);
+                visOutput.Draw(fingers.ToString() + "::" + mode.ToString(), ref font, new Point(50, 150), new Bgr(System.Drawing.Color.White));
+            }
 
             if (mode == 0)
                 return Microsoft.Kinect.HandState.Closed;
