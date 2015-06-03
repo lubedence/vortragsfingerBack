@@ -36,46 +36,39 @@ namespace votragsfinger2
     /// </summary>
     public partial class MainWindow : Window
     {
-        KinectSensor _sensor;
-        MultiSourceFrameReader _reader;
-        IList<Body> _bodies;
+        //gesture recognition for hide&show program as well as menu
         VisualGestureBuilderFrameSource _gestureSource;
-        VisualGestureBuilderFrameReader _gestureReader; 
-        Body interactingBody = null;
+        VisualGestureBuilderFrameReader _gestureReader;
+        Stopwatch lastGestureTime = new Stopwatch(); //a gesture needs to be recognized for a specific amount of time
+        Gesture openingGesture; //gesture to open program or menu
+        Gesture closingGesture; //gesture to close program or menu
 
-        HandState rHand = HandState.Unknown;
-        HandState lHand = HandState.Unknown;
-        Stopwatch lastGestureTime = new Stopwatch();
+        //Handstate of both hands, updated every time a new frame arrives 
+        HandState rHandState = HandState.Unknown;
+        HandState lHandState = HandState.Unknown;
 
-        Gesture openingGesture;
-        Gesture closingGesture;
-
+        //flag if menu is open or closed
         bool isMenuOpen = false;
 
+        //variables for hiding windows-cursor as soon as the cursor stands still for a while 
         private DateTime lastMouseMove = DateTime.Now;
         private bool isMouseHidden = false;
         DispatcherTimer dispatcherTimer = new DispatcherTimer();
         Cursor currentCursor;
 
-        private List<Point> stroke = new List<Point>();
-
-
-        //BACK
+        //own physical interaction zone + handsegmentation / Handstate recognition. Used if Kinect is mounted behind the user, or you do not want to use the Microsoft KinectRegion implementation
         private Phiz phiz;
         private HandState currentCursorBackHandState = HandState.Unknown; 
 
         public MainWindow()
         {
             InitializeComponent();
-            //read/set user parameters
-            UserSettings.Instance.parseIniFile();
-            //minimize to tray
-            MinimizeToTray.Enable(this);
+            UserSettings.Instance.parseIniFile();   //read and set user parameters
+            MinimizeToTray.Enable(this);            //minimize to tray
 
-            //kinect sensor setup
-            KinectSetup();
+            KinectSetup();  //kinect sensor setup
             
-            //menu handlers
+            //menu handlers, if user changes drawing properties on the menu
             kinectMenu.ColorChanged += new menu.ColorChangedEventHandler(kinectMenu_ColorChanged);
             kinectMenu.ThicknessChanged += new menu.ThicknessChangedEventHandler(kinectMenu_ThicknessChanged);
             kinectMenu.DrawTypeChanged += new menu.DrawTypeChangedEventHandler(kinectMenu_DrawTypeChanged);
@@ -87,16 +80,22 @@ namespace votragsfinger2
             dispatcherTimer.Tick += new EventHandler(dispatcherTimer_Tick);
             dispatcherTimer.Interval = new TimeSpan(0, 0, 1);
             dispatcherTimer.Start();
-            
-            
         }
 
+        /// <summary>
+        /// handler: drawing color changed
+        /// </summary>
+        /// <param name="c">the new color</param>
         private void kinectMenu_ColorChanged(Color c)
         {
             myCanvas.LineColor = c;
             myCanvas.DefaultDrawingAttributes.Color = c;
         }
 
+        /// <summary>
+        /// handler: drawing thickness changed
+        /// </summary>
+        /// <param name="t">the new thickness</param>
         private void kinectMenu_ThicknessChanged(Double t)
         {
             myCanvas.LineThickness = t;
@@ -104,12 +103,20 @@ namespace votragsfinger2
             myCanvas.DefaultDrawingAttributes.Width = t;
         }
 
+        /// <summary>
+        /// handler: drawing type changed (like free drawing, or drawing straight lines)
+        /// </summary>
+        /// <param name="dt">the new DrawingType</param>
         private void kinectMenu_DrawTypeChanged(votragsfinger2.SketchCanvas.DrawType dt)
         {
             myCanvas.LineDrawType = dt;
         }
 
-
+        /// <summary>
+        /// checks if enough time has passed since last windows-cursor movement. if yes, hide windows-cursor.
+        /// </summary>
+        /// <param name="sender">not used in this context</param>
+        /// <param name="e">not used in this context</param>
         private void dispatcherTimer_Tick(object sender, EventArgs e)
         {
             if (DateTime.Now - lastMouseMove > TimeSpan.FromSeconds(2) && !isMouseHidden)
@@ -119,6 +126,13 @@ namespace votragsfinger2
                 isMouseHidden = true;
             }
         }
+
+        /// <summary>
+        /// Handler: Windows-cursor has moved.
+        /// TODO: use cursor coordinates to check if the cursor actualy moved -> event is triggered also at other circumstances
+        /// </summary>
+        /// <param name="sender">not used in this context</param>
+        /// <param name="e">not used in this context</param>
         private void mainWindow_MouseMove(object sender, MouseEventArgs e)
         {
             lastMouseMove = DateTime.Now;
@@ -130,16 +144,22 @@ namespace votragsfinger2
             }
         }
 
-        //TODO: Close sensor method & call
+        /// <summary>
+        /// 1) tries to get and open a Kinect-sensor
+        /// 2) checks if user wants to use Kinect-Region, or the custom Phiz & Handstate recognition 
+        /// 3) initialize gesture recognition to show/hide menu or the program itself
+        /// TODO: Close sensor method & call
+        /// </summary>
+        /// <returns></returns>
         private bool KinectSetup()
         {
-            _sensor = KinectSensor.GetDefault();
+            KinectSensor _sensor = KinectSensor.GetDefault();
             if (_sensor == null)
             {
                 return false;
             }
 
-            //kinect sdk phiz pointer
+            //Use KinectRegion (integrated in Kinect SDK)
             if (UserSettings.Instance.IS_KINECTREGION_USED)
             {
                 KinectRegion.SetKinectRegion(this, kinectRegion);
@@ -147,7 +167,7 @@ namespace votragsfinger2
                 app.KinectRegion = kinectRegion;
                 kinectRegion.KinectSensor = _sensor;
                 KinectCoreWindow kinectCoreWindow = KinectCoreWindow.GetForCurrentThread();
-                kinectCoreWindow.PointerMoved += kinectCoreWindow_PointerMoved;
+                kinectCoreWindow.PointerMoved += kinectCoreWindow_PointerMoved; //fired as soon as user moves his hand (if this hand is identified as interacting)
                 
             }
             else
@@ -158,25 +178,33 @@ namespace votragsfinger2
                 //init own phiz and hand state recognition
                 phiz = new Phiz(UserSettings.Instance.IS_KINECT_BEHIND_USER); 
             }
-           
-            _sensor.Open();
 
-            _reader = _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Body | FrameSourceTypes.BodyIndex);
-            _reader.MultiSourceFrameArrived += OnMultiSourceFrameArrived;
+            //open sensor
+            _sensor.Open(); 
+            //add handler
+            _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Body | FrameSourceTypes.BodyIndex).MultiSourceFrameArrived += OnMultiSourceFrameArrived;
 
-            LoadGestures();
+            LoadGestures(); //gesture recognition for showing/hiding menu or the program itself
 
             return true;
         }
 
-
+        /// <summary>
+        /// gesture recognition for showing/hiding menu or the program itself.
+        /// Trained with Microsoft Visual Gesture Builder.
+        /// Two different gestures: 
+        /// a) "HandsApart" for showing the program itself (if minimized) or the menu (if hidden)
+        /// b) "HandsTogether" for hiding the menu (if shown) or the program itself (if not minimized)
+        /// 
+        /// TODO: Catch exceptions if gesture files cant be found.
+        /// </summary>
         void LoadGestures()
         {
             VisualGestureBuilderDatabase db = new VisualGestureBuilderDatabase(@"gestures/gestures1.gbd");
             this.openingGesture = db.AvailableGestures.Where(g => g.Name == "HandsApart").Single();
             this.closingGesture = db.AvailableGestures.Where(g => g.Name == "HandsTogether").Single();
 
-            this._gestureSource = new VisualGestureBuilderFrameSource(this._sensor, 0);
+            this._gestureSource = new VisualGestureBuilderFrameSource(KinectSensor.GetDefault(), 0);
 
             this._gestureSource.AddGesture(this.openingGesture);
             this._gestureSource.AddGesture(this.closingGesture);
@@ -185,7 +213,7 @@ namespace votragsfinger2
 
             this._gestureReader = this._gestureSource.OpenReader();
             this._gestureReader.IsPaused = true;
-            this._gestureReader.FrameArrived += OnGestureFrameArrived;
+            this._gestureReader.FrameArrived += OnGestureFrameArrived; //handler for new frames to check for gestures
 
             lastGestureTime.Start();
         }
@@ -195,6 +223,11 @@ namespace votragsfinger2
             this._gestureReader.IsPaused = true;
         }
 
+        /// <summary>
+        /// handler: new frame arrived and is checked for gestures
+        /// </summary>
+        /// <param name="sender">not used in this context</param>
+        /// <param name="e">contains new frame</param>
         void OnGestureFrameArrived(object sender, VisualGestureBuilderFrameArrivedEventArgs e)
         {
             using (var frame = e.FrameReference.AcquireFrame())
@@ -204,15 +237,13 @@ namespace votragsfinger2
                     var discreteResults = frame.DiscreteGestureResults;
                     if (discreteResults == null) return;
 
+                    //Closing Gesture
                     if (discreteResults.ContainsKey(this.closingGesture))
                     {
                         var result = discreteResults[this.closingGesture];
                         if (result.Detected && result.Confidence > UserSettings.Instance.GESTURE_MIN_CONFIDENCE && lastGestureTime.ElapsedMilliseconds > UserSettings.Instance.GESTURE_MIN_TIME)
                         {
-
                             lastGestureTime.Restart();
-
-                            //Closing Gesture started
                             if (isMenuOpen)
                             {
                                 hideMenu();
@@ -224,16 +255,14 @@ namespace votragsfinger2
 
                         }
                     }
-                    
+
+                    //Opening Gesture
                     if (discreteResults.ContainsKey(this.openingGesture))
                     {
                         var result = discreteResults[this.openingGesture];
                         if (result.Detected && result.Confidence > UserSettings.Instance.GESTURE_MIN_CONFIDENCE && lastGestureTime.ElapsedMilliseconds > UserSettings.Instance.GESTURE_MIN_TIME)
                         {
-
                             lastGestureTime.Restart();
-
-                            //Opening Gesture started
                             if (WindowState == System.Windows.WindowState.Minimized)
                             {
                                 showWindow();
@@ -247,7 +276,13 @@ namespace votragsfinger2
             }
         }
 
-
+        /// <summary>
+        /// handler: new multisource-frame arrived.
+        /// if KinectRegion is used: just extraced HandState for both hands
+        /// if not used: calc HandState for both hands, show interacting hand-position on screen as hand-cursor and carry drawing interactions out
+        /// </summary>
+        /// <param name="sender">not used in this context</param>
+        /// <param name="e">contains new multisource-frame</param>
         void OnMultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
         {
             var reference = e.FrameReference.AcquireFrame();
@@ -257,9 +292,9 @@ namespace votragsfinger2
             {
                 if (bodyFrame != null && bodyIndexFrame != null)
                 {
-                    _bodies = new Body[bodyFrame.BodyFrameSource.BodyCount];
+                    IList<Body> _bodies = new Body[bodyFrame.BodyFrameSource.BodyCount];
                     bodyFrame.GetAndRefreshBodyData(_bodies);
-                    var trackedBody = this._bodies.Where(b => b.IsTracked).FirstOrDefault();
+                    var trackedBody = _bodies.Where(b => b.IsTracked).FirstOrDefault();
 
                     if (trackedBody != null)
                         {
@@ -269,80 +304,99 @@ namespace votragsfinger2
                                 this._gestureSource.TrackingId = trackedBody.TrackingId;
                                 this._gestureReader.IsPaused = false;
                             }
-                            
-                            //current interacting body
-                            interactingBody = trackedBody;
 
+                            //hand states - just working well if kinect is mounted in front of user
                             if (UserSettings.Instance.IS_KINECTREGION_USED)
                             {
-                                //hand states - just working well if kinect is mounted in front of user
-                                rHand = trackedBody.HandRightState;
-                                lHand = trackedBody.HandLeftState;
+                                rHandState = trackedBody.HandRightState;
+                                lHandState = trackedBody.HandLeftState;
                             }
                             else
                             {
+                                //if one of the two hands is interacting
                                 if (phiz.checkForInteraction(trackedBody, bodyIndexFrame))
                                 {
-                                    rHand = phiz.getHandState(HandType.RIGHT);
-                                    lHand = phiz.getHandState(HandType.LEFT);
+                                    rHandState = phiz.getHandState(HandType.RIGHT);
+                                    lHandState = phiz.getHandState(HandType.LEFT);
+                                    //show interacting hand position as cursor and carry drawing interactions out
                                     canvasInteraction(phiz.getInteractionPoint(), phiz.getInteractionHand());
 
+                                    //just for debugging purposes: if activated in HandSegmentation.cs, a not-null image of the segmented hand with some graphical information is returned
                                     testImg.Source = BitmapSourceConvert.ToBitmapSource(phiz.getVisOutputFromHandSegmentation(phiz.getInteractionHand()));
                                 }
                             }
                         }
                     else
                     {
-                        OnTrackingIdLost(null, null);
+                        OnTrackingIdLost(null, null); //used for gesture recogntion (hide/show menu/programm)
                     }
                 }
             }
         }
 
+        /// <summary>
+        /// handler: called if KinectRegion is activated and the interacting hand has moved
+        /// </summary>
+        /// <param name="sender">not used in this context</param>
+        /// <param name="args">contains current hand position as KinectPointerPoint</param>
         private void kinectCoreWindow_PointerMoved(object sender, KinectPointerEventArgs args)
         {
+            //current hand position
             KinectPointerPoint kinectPointerPoint = args.CurrentPoint;
 
             //just one of the >2 hands is the active one
             if (!kinectPointerPoint.Properties.IsEngaged) return;
 
+            //map hand position to display coordinates (kinectRegion == display-width/height)
             Point pointRelativeToKinectRegion = new Point(kinectPointerPoint.Position.X * kinectRegion.ActualWidth, kinectPointerPoint.Position.Y * kinectRegion.ActualHeight);
 
-            //CANVAS INTERACTION
+            //carry drawing interactions out
             canvasInteraction(pointRelativeToKinectRegion, kinectPointerPoint.Properties.HandType);
 
         }
 
+        /// <summary>
+        /// carries drawing interactions out. 
+        /// if KinectRegion is not used, shows hand-cursor in addition
+        /// </summary>
+        /// <param name="p">interacting hand as screen coordinates</param>
+        /// <param name="ht">left or right hand</param>
         private void canvasInteraction(Point p,  HandType ht)
         {
             if (!isMenuOpen)
             {
-                if ((ht == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_MOVE) || (ht == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_MOVE))
+                if ((ht == HandType.RIGHT && rHandState == UserSettings.Instance.GESTURE_MOVE) || (ht == HandType.LEFT && lHandState == UserSettings.Instance.GESTURE_MOVE))
                 {
                     myCanvas.updateStrokes(p, SketchCanvas.UserAction.Move);
                 }
-                else if ((ht == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_DRAW) || (ht == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_DRAW))
+                else if ((ht == HandType.RIGHT && rHandState == UserSettings.Instance.GESTURE_DRAW) || (ht == HandType.LEFT && lHandState == UserSettings.Instance.GESTURE_DRAW))
                 {
                     myCanvas.updateStrokes(p, SketchCanvas.UserAction.Draw);
                 }
-                else if ((ht == HandType.RIGHT && rHand == UserSettings.Instance.GESTURE_RUBBER) || (ht == HandType.LEFT && lHand == UserSettings.Instance.GESTURE_RUBBER))
+                else if ((ht == HandType.RIGHT && rHandState == UserSettings.Instance.GESTURE_RUBBER) || (ht == HandType.LEFT && lHandState == UserSettings.Instance.GESTURE_RUBBER))
                 {
                     myCanvas.updateStrokes(p, SketchCanvas.UserAction.Cancel);
                 }
 
+                //if KinectRegion is not used, show hand-cursor
                 if(!UserSettings.Instance.IS_KINECTREGION_USED)
                     setInteractionCursor(p, ht);
             }
         }
 
+        /// <summary>
+        /// sets and shows hand-cursor
+        /// </summary>
+        /// <param name="p">screeen coordinates, position of cursor</param>
+        /// <param name="ht">left or right hand</param>
         private void setInteractionCursor(Point p, HandType ht)
         {
             HandState hs = HandState.Unknown;
 
             if (ht == HandType.RIGHT)
-                hs = rHand;
+                hs = rHandState;
             else if (ht == HandType.LEFT)
-                hs = lHand;
+                hs = lHandState;
 
             if (currentCursorBackHandState != hs)
             {
@@ -381,9 +435,9 @@ namespace votragsfinger2
             }
 
 
+            //Todo: width&height is always NaN
             double offsetX = interactionCursorBack.Width;
             double offsetY = interactionCursorBack.Height;
-
             if (double.IsNaN(offsetX) || double.IsNaN(offsetY))
                 offsetX = offsetY = 0;
 

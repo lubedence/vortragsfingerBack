@@ -6,7 +6,7 @@
         Title="Vortragsfinger 2" 
         Height="350" 
         Width="525"
-        WindowState="Maximized" AllowsTransparency="True" WindowStyle="None" BorderThickness="10" BorderBrush="Red" Icon="v2_icon.ico">
+        WindowState="Maximized" AllowsTransparency="True" WindowStyle="None" BorderThickness="10" BorderBrush="Red" Icon="img/v2_icon.ico">
 
     <Window.Background>
         <SolidColorBrush Opacity="0.0" Color="White"/>

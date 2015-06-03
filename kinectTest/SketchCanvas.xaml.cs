@@ -30,11 +30,11 @@ namespace votragsfinger2
         private List<Point> stroke = new List<Point>();
         private Point lastDrawnPoint;
         private Point smoothPoint;
-        bool isUserDrawing = false;
+        private bool isUserDrawing = false;
         private UserAction lastUserAction = UserAction.Move;
         private DrawType lineDrawType = DrawType.Freehand;
 
-        Stopwatch lastUserActionTime = new Stopwatch();
+        private Stopwatch lastUserActionTime = new Stopwatch();
 
         private double lineThickness = 10;
         private Color lineColor = Color.FromRgb(0, 0, 0);
@@ -63,6 +63,10 @@ namespace votragsfinger2
             lastUserActionTime.Start();
         }
 
+        /// <summary>
+        /// Freehand drawing mode
+        /// </summary>
+        /// <param name="nextPoint">next point which should be drawn</param>
         private void drawFreehand(Point nextPoint)
         {
             if (!isUserDrawing)
@@ -91,6 +95,11 @@ namespace votragsfinger2
             lastDrawnPoint = nextPoint;
         }
 
+        /// <summary>
+        /// Freehand straight (horizontal and vertical) lines mode
+        /// TODO: needs some tuning
+        /// </summary>
+        /// <param name="nextPoint">next point which should be drawn</param>
         private void drawFreehandStraight(Point nextPoint)
         {
             if (!isUserDrawing)
@@ -140,6 +149,10 @@ namespace votragsfinger2
             lastDrawnPoint = nextPoint;
         }
 
+        /// <summary>
+        /// draw lines mode: specify start and end point of the line
+        /// </summary>
+        /// <param name="nextPoint">new end point</param>
         private void drawLine(Point nextPoint)
         {
             if (!isUserDrawing)
@@ -173,6 +186,10 @@ namespace votragsfinger2
 
         }
 
+        /// <summary>
+        /// checks if user has completed his drawing move. if yes, convert single drawn lines to stroke and add them to the canvas
+        /// </summary>
+        /// <param name="nextPoint"></param>
         private void evaluateStrokePart(Point nextPoint)
         {
             int distToLastDrawnPoint = (int)Math.Sqrt(Math.Pow((lastDrawnPoint.X - nextPoint.X), 2) + Math.Pow((lastDrawnPoint.Y - nextPoint.Y), 2));
@@ -202,11 +219,21 @@ namespace votragsfinger2
             }
         }
 
+        /// <summary>
+        /// delete strokes that are near the hand-position (nextPoint)
+        /// </summary>
+        /// <param name="nextPoint">surrounding strokes will be deleted</param>
         private void deleteStrokes(Point nextPoint)
         {
             this.Strokes.Remove(this.Strokes.HitTest(nextPoint, UserSettings.Instance.RUBBER_SIZE));
         }
 
+
+        /// <summary>
+        /// Manage UserAction (Draw stroke, Cancel stroke, Move)
+        /// </summary>
+        /// <param name="nextPoint">position of hand-cursor</param>
+        /// <param name="ua">action for current HandState</param>
         public void updateStrokes(Point nextPoint, UserAction ua)
         {
             switch (ua)

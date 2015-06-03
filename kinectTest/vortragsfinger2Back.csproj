@@ -50,7 +50,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup>
-    <ApplicationIcon>v2_icon.ico</ApplicationIcon>
+    <ApplicationIcon>img\v2_icon.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup>
     <ManifestCertificateThumbprint>070F0BBF639BB26C22B76E2D5A507D27606DA484</ManifestCertificateThumbprint>
@@ -122,20 +122,20 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="HandSegmentation.cs" />
-    <Compile Include="KinectJointStabilization.cs" />
-    <Compile Include="KinectJointFilter.cs" />
+    <Compile Include="kinect\HandSegmentation.cs" />
+    <Compile Include="kinect\KinectJointStabilization.cs" />
+    <Compile Include="kinect\KinectJointFilter.cs" />
     <Compile Include="menu.xaml.cs">
       <DependentUpon>menu.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Phiz.cs" />
+    <Compile Include="kinect\Phiz.cs" />
     <Compile Include="SketchCanvas.xaml.cs">
       <DependentUpon>SketchCanvas.xaml</DependentUpon>
     </Compile>
+    <Compile Include="util\BitmapSourceConvert.cs" />
     <Compile Include="util\FixSizeQueue.cs" />
     <Compile Include="util\HsvColor.cs" />
     <Compile Include="util\UserSettings.cs" />
-    <Compile Include="util\VirtualMouse.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -207,7 +207,7 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="v2_icon.ico" />
+    <Resource Include="img\v2_icon.ico" />
     <Resource Include="img\cursor.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
@@ -217,6 +217,9 @@
     <Resource Include="img\cursor_lasso.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
+    <Content Include="cudart32_65.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="opencv_core2410.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
