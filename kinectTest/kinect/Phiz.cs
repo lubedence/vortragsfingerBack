@@ -42,9 +42,9 @@ namespace votragsfinger2Back
         private KinectJointFilter allJointFilterForHandSegmentation = new KinectJointFilter();
 
         //dimension of the Phiz
-        private Vector3D PHIZ_DIMENSION = new Vector3D(0.3, 0.2, 0);
+        private Vector3D PHIZ_DIMENSION = new Vector3D(90, 60, 0); //TODO: dimension relative to sensor distance
         //Phiz offset from origin(=originJointType)
-        private Vector3D PHIZ_OFFSET = new Vector3D(-0.3, -0.1, 0);
+        private Vector3D PHIZ_OFFSET = new Vector3D(50, 20, 0); //TODO: offset relative to sensor distance
 
         //segment hands in each frame to extract HandState(=hand gestures)
         private HandSegmentation handLeftSegmentation = new HandSegmentation(512,424);
@@ -74,6 +74,15 @@ namespace votragsfinger2Back
             return new Vector3D(csp.X * backtrackingFactor, csp.Y, csp.Z);
         }
 
+        private Vector3D convertToV3(System.Drawing.PointF pf)
+        {
+            return new Vector3D(pf.X, pf.Y, 0);
+        }
+
+        private Vector3D convertToV3(DepthSpacePoint dsp)
+        {
+            return new Vector3D(dsp.X, dsp.Y, 0);
+        }
 
         private HandState calcHandState(BodyIndexFrame bif, HandType ht)
         {
@@ -97,13 +106,9 @@ namespace votragsfinger2Back
             }
             else return HandState.Unknown;
 
-            //calculate distance between hand joint and elbow joint. used to have some kind of proportion
-            double cspRadius3d = (Math.Sqrt(Math.Pow((cspCenter.X - cspEllbow.X), 2) + Math.Pow((cspCenter.Y - cspEllbow.Y), 2) + Math.Pow((cspCenter.Z - cspEllbow.Z), 2)));
-            double cspRadius2d = (Math.Sqrt(Math.Pow((cspCenter.X - cspEllbow.X), 2) + Math.Pow((cspCenter.Y - cspEllbow.Y), 2)));
+            
             DepthSpacePoint dspCenter = KinectSensor.GetDefault().CoordinateMapper.MapCameraPointToDepthSpace(cspCenter);
             DepthSpacePoint dspElbow = KinectSensor.GetDefault().CoordinateMapper.MapCameraPointToDepthSpace(cspEllbow);
-            double radius = (Math.Sqrt(Math.Pow((dspCenter.X - dspElbow.X), 2) + Math.Pow((dspCenter.Y - dspElbow.Y), 2)));
-            radius = radius / cspRadius2d * cspRadius3d; //third(z) dimension
 
             HandSegmentation handSegmentation;
             if (ht == handLeftType)
@@ -112,8 +117,9 @@ namespace votragsfinger2Back
                 handSegmentation = handRightSegmentation;
 
             //segment hand from body and extract HandState
-            handSegmentation.searchFloodFill(_bodyIndexData, (int)dspCenter.X, (int)dspCenter.Y, (int)radius);
-            return handSegmentation.ExtractHandState();
+            handSegmentation.searchFloodFill(_bodyIndexData, (int)dspCenter.X, (int)dspCenter.Y, (int)dspElbow.X, (int)dspElbow.Y);
+            HandState hs = handSegmentation.ExtractHandState();
+            return hs;
         }
 
         /// <summary>
@@ -126,15 +132,15 @@ namespace votragsfinger2Back
         /// <returns>true if a hand is interacting, otherwise return false </returns>
         public bool checkForInteraction(Body trackedBody, BodyIndexFrame bif)
         {
-            interactingPoint = new Point(-1, -1); //reset screen cooordinate position of hand
+            //interactingPoint = new Point(-1, -1); //reset screen cooordinate position of hand
 
             //calc HandState for both hands
+            allJointFilterForHandSegmentation.UpdateFilter(trackedBody);
             handStateLeft = calcHandState(bif, handLeftType);
             handStateRight = calcHandState(bif, handRightType);
 
             //some joint filtering
             allJointFilter.UpdateFilter(trackedBody);
-            allJointFilterForHandSegmentation.UpdateFilter(trackedBody);
             Vector3D originJointV3 = convertToV3(allJointFilter.getFilteredJoint(originJointType));
             originJointV3 = originJointFilter.getFilteredPosition(originJointV3);
             Vector3D handLeftV3 = convertToV3(allJointFilter.getFilteredJoint(handLeftJoint));
@@ -159,16 +165,28 @@ namespace votragsfinger2Back
                     return false;
             }
 
+            originJointV3 = convertToV3(KinectSensor.GetDefault().CoordinateMapper.MapCameraPointToDepthSpace(allJointFilter.getFilteredJoint(originJointType)));
+
             //some calculations to map interacting hand position to Phiz
             Vector3D distV3;
 
             if (interactingHand == handRightType)
-                distV3 = (originJointV3 + PHIZ_OFFSET - handRightV3);
+            {
+                handRightV3.X = handRightSegmentation.getNewHandCenter().X;
+                handRightV3.Y = handRightSegmentation.getNewHandCenter().Y;
+                distV3 = (handRightV3 - (originJointV3 - PHIZ_OFFSET) );
+                distV3.X *= -1;
+            }
             else
             {
-                distV3 = (originJointV3 + PHIZ_OFFSET - handLeftV3);
-                distV3.X = (handLeftV3.X - originJointV3.X + PHIZ_OFFSET.X);
+                handLeftV3.X = handLeftSegmentation.getNewHandCenter().X;
+                handLeftV3.Y = handLeftSegmentation.getNewHandCenter().Y;
+                Vector3D _phiz_offset = PHIZ_OFFSET;
+                _phiz_offset.X *= -1;
+                distV3 = (handLeftV3 - (originJointV3 - _phiz_offset));
             }
+
+            
 
             if (distV3.X < 0) distV3.X = 0;
             else if (distV3.X > PHIZ_DIMENSION.X) distV3.X = PHIZ_DIMENSION.X;
@@ -197,8 +215,9 @@ namespace votragsfinger2Back
             double scale = xScale;
             if (yScale > xScale) scale = yScale;
 
-            interactingPoint = new Point(distV3.X * scale, distV3.Y * scale); //screen coordinates of interacting hand
-
+            Point _tmp = new Point(distV3.X * scale, distV3.Y * scale); //screen coordinates of interacting hand
+            interactingPoint = new Point(interactingPoint.X * 0.9 + _tmp.X * 0.1, interactingPoint.Y * 0.9 + _tmp.Y * 0.1);
+            //interactingPoint = _tmp;
             return true; 
         }
 

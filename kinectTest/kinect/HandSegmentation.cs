@@ -28,7 +28,6 @@ namespace votragsfinger2Back
         private int width; //width of depth frame 
         private int height; //height of depth frame
 
-        private int maxDist; //max radius for seedFill
         private int xSeed; //seedPoint(handcenter) x value
         private int ySeed; //seedPoint(handcenter) y value
 
@@ -45,8 +44,12 @@ namespace votragsfinger2Back
         public bool isVisOutputActive = false;
 
         //simple mode filtering of extracted HandState
-        private FixSizeQueue<byte> filterHandState = new FixSizeQueue<byte>(8); //queue size == frame amount
+        private FixSizeQueue<byte> filterHandState = new FixSizeQueue<byte>(12); //queue size == frame amount
 
+        //hand segment (binary)
+        private Image<Gray, byte> handSegment;
+
+        private Point handCentroid;
         /// <summary>
         /// Init
         /// </summary>
@@ -57,17 +60,21 @@ namespace votragsfinger2Back
             this.width = width;
             this.height = height;
             isVisOutputActive = UserSettings.Instance.IS_DEBUG_OUTPUT;
+
+            isVisOutputActive = true;
         }
 
 
         /// <summary>
-        /// Starting from hand-joint position (x,y) try to segment hand using seed fill algo. 
-        /// TODO: some improvement needed, eg. Depth based thresholding, remove segmented parts below hand wrist, ...
-        /// Problem: sdk hand-joint position sometimes has large jitter 
+        /// Starting from hand-joint position (x,y) try to segment hand using customized seed fill algo. 
+        /// TODO: some improvement needed, eg. Depth based thresholding, using rgb-image, ...
+        /// Problem: sdk hand-joint position sometimes has large jitter (centroid of segmented hand will be used instead for further actions)
         /// </summary>
         /// <param name="x">hand-joint x</param>
         /// <param name="y"> hand-joint y</param>
-        private void seedFill(int x, int y)
+        /// <param name="x2">elbow-joint x</param>
+        /// <param name="y2"> elbow-joint y</param>
+        private bool seedFill(int x, int y, int x2, int y2)
         {
             Queue<Point> queue = new Queue<Point>();
             queue.Enqueue(new Point(x, y));
@@ -80,12 +87,20 @@ namespace votragsfinger2Back
                 int depthIndex = (p.Y * width) + p.X;
                 byte isPlayerPixel = inputData[depthIndex];
 
-                double dX = Math.Abs((xSeed - p.X));
-                double dY = Math.Abs((ySeed - p.Y));
+                double dX = (xSeed - p.X);
+                double dY = (ySeed - p.Y);
 
-                if (searchedData[depthIndex] != 255) continue;
+                if (searchedData[depthIndex] < 250) continue;
+                if (isPlayerPixel == 0xff)
+                {
+                    searchedData[depthIndex] = 0;
+                    continue;
+                }
 
-                if (Math.Sqrt(dX * dX + dY * dY) > maxDist * 0.5 || isPlayerPixel == 0xff)
+                double distToHandCenter = Math.Sqrt(dX * dX + dY * dY);
+                //calculate distance between hand joint and elbow joint. used to have some kind of proportion
+                double maxDist = getDist(x, y, x2, y2);
+                if ((distToHandCenter > maxDist * 0.5 && dY < 0) || (distToHandCenter > maxDist * 1.5 && dY >= 0) || getDist(p.X, p.Y, x2, y2) < maxDist * 0.65)
                 {
                     searchedData[depthIndex] = 0;
                     continue;
@@ -98,6 +113,68 @@ namespace votragsfinger2Back
                 queue.Enqueue(new Point(p.X + 1, p.Y + 0));
                 queue.Enqueue(new Point(p.X - 1, p.Y + 0));
             }
+
+
+            //Create gray-image matrix out of segmented hand byte array
+            byte[, ,] pixels = new byte[height, width, 1];
+
+            int minX = width, minY = 0, maxX = 0, maxY = height;
+            bool firstVal = false;
+            for (int _y = 0; _y < height; ++_y)
+            {
+                bool rowIsEmtpy = true;
+                for (int _x = 0; _x < width; ++_x)
+                {
+                    byte val = 0;
+                    if (searchedData[(_y * width) + _x] == 1)
+                    {
+                        val = 255;
+                        if (rowIsEmtpy) rowIsEmtpy = false;
+                        if (!firstVal)
+                        {
+                            firstVal = true;
+                            minY = _y;
+                        }
+                        if (minX > _x) minX = _x;
+                        if (maxX < _x) maxX = _x;
+                    }
+                    pixels[_y, _x, 0] = val;
+                }
+                if (firstVal && rowIsEmtpy)
+                {
+                    maxY = _y;
+                    break;
+                }
+            }
+
+         handSegment = null;
+         if (maxX - minX < 0)
+             return false;
+
+         handSegment = new Image<Gray, byte>(pixels);
+         handSegment.ROI = new Rectangle(minX, minY, maxX - minX, maxY - minY);
+         return true;
+        }
+
+        private void FindCentroidByDistanceTrans(Image<Gray, byte> binary_image)
+        {
+            double max_value = 0.0d, min_value = 0.0d;
+
+            handCentroid = new Point(0, 0);
+            Point min_location = new Point(0, 0);
+
+            using (Image<Gray, float> distTransform = new Image<Gray, float>(binary_image.Width, binary_image.Height))
+            {
+                CvInvoke.cvDistTransform(binary_image, distTransform, Emgu.CV.CvEnum.DIST_TYPE.CV_DIST_L2, 3, null, IntPtr.Zero);
+                CvInvoke.cvMinMaxLoc(distTransform, ref min_value, ref max_value, ref min_location, ref handCentroid, IntPtr.Zero);
+            }
+        }
+
+
+        public PointF getNewHandCenter()
+        {
+            if (handSegment == null) return new PointF(0, 0);
+            return new PointF(handCentroid.X + handSegment.ROI.X, handCentroid.Y + handSegment.ROI.Y);
         }
 
 
@@ -109,7 +186,7 @@ namespace votragsfinger2Back
         /// <param name="y">hand joint y value</param>
         /// <param name="dist">max distance to hand joint</param>
         /// <returns></returns>
-        public byte[] searchFloodFill(byte[] data, int x, int y, int dist)
+        public void searchFloodFill(byte[] data, int x, int y, int x2, int y2)
         {
             inputData = data;
             searchedData = new byte[data.Length];
@@ -119,11 +196,7 @@ namespace votragsfinger2Back
             xSeed = x;
             ySeed = y;
 
-            maxDist = dist;
-
-            seedFill(x, y);
-
-            return searchedData;
+            seedFill(x, y, x2, y2);
         }
 
         //just for debug purposes
@@ -152,22 +225,7 @@ namespace votragsfinger2Back
         /// <returns>HandState of segmented hand</returns>
         public Microsoft.Kinect.HandState ExtractHandState()
         {
-            //Create gray-image matrix out of segmented hand byte array
-            byte[, ,] pixels = new byte[height, width, 1];
-
-            for (int y = 0; y < height; ++y)
-            {
-                for (int x = 0; x < width; ++x)
-                {
-                    byte val = 0;
-                    if (searchedData[(y * width) + x] == 1)
-                        val = 255;
-                    pixels[y, x, 0] = val;
-                }
-            }
-
-
-            return ExtractHandState(new Image<Gray, byte>(pixels));
+            return ExtractHandState(handSegment);
         }
 
 
@@ -178,8 +236,13 @@ namespace votragsfinger2Back
         /// <returns>HandState of segmented hand</returns>
         private Microsoft.Kinect.HandState ExtractHandState(Image<Gray, byte> handSegment)
         {
+            if (handSegment == null) return Microsoft.Kinect.HandState.Unknown;
+ 
             using (MemStorage storage = new MemStorage())
             {
+
+                FindCentroidByDistanceTrans(handSegment);
+
                 //search biggest contour in image
                 //could be removed - there should always be just one blob(==segmented hand)
                 Contour<Point> contours = handSegment.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_LIST, storage);
@@ -212,7 +275,8 @@ namespace votragsfinger2Back
 
                     //Debug
                     if (isVisOutputActive)
-                        visOutput.Draw(new CircleF(new Point(xSeed, ySeed), 3), new Bgr(200, 125, 75), 2);
+                        visOutput.Draw(new CircleF(handCentroid, 3), new Bgr(200, 125, 75), 2);
+                        //visOutput.Draw(new CircleF(new Point(xSeed, ySeed), 3), new Bgr(200, 125, 75), 2);
 
                     //filter convex hull: remove point if distance to neighboring point is too small
                     filteredHull = new Seq<Point>(storage);
@@ -248,14 +312,14 @@ namespace votragsfinger2Back
         /// TODO: Not finshed, just some expermimental code
         /// </summary>
         /// <returns>return HandState of Segmented Hand using data, calculated in ExtractHandState(..)</returns>
-        public Microsoft.Kinect.HandState calcHandState()
+        private Microsoft.Kinect.HandState calcHandState()
        {
-           int fingerAmount = 0;
+           int featureAmount = 0;
 
            MCvConvexityDefect[] defectArray = defects.ToArray();
            
             
-           /*PointF[] enclosingPointsDepth = new PointF[defects.Total];
+           PointF[] enclosingPointsDepth = new PointF[defects.Total];
            PointF[] enclosingPointsStart = new PointF[defects.Total];
 
            if (defects.Total > 0) { 
@@ -267,9 +331,12 @@ namespace votragsfinger2Back
 
                CircleF minEncCircleDepth = Emgu.CV.PointCollection.MinEnclosingCircle(enclosingPointsDepth);
                CircleF minEncCircleStart = Emgu.CV.PointCollection.MinEnclosingCircle(enclosingPointsStart);
-               //visOutput.Draw(minEncCircleDepth, new Bgr(100, 125, 75), 2);
-               //visOutput.Draw(minEncCircleStart, new Bgr(200, 125, 75), 2);
-        }*/
+               if (isVisOutputActive)
+               {
+                   //visOutput.Draw(minEncCircleDepth, new Bgr(100, 125, 75), 2);
+                   //visOutput.Draw(minEncCircleStart, new Bgr(200, 125, 75), 2);
+               }
+        }
 
            
           for (int i = 0; i < defects.Total; i++)
@@ -286,8 +353,8 @@ namespace votragsfinger2Back
 
               //visOutput.Draw(new CircleF(depthPoint, 2), new Bgr(200, 125, 75), 2);
                
-             // if ((startPoint.Y - ySeed < 0 && depthPoint.Y - ySeed < 0) && (startPoint.Y < depthPoint.Y) && (Math.Sqrt(Math.Pow(startPoint.X - depthPoint.X, 2) + Math.Pow(startPoint.Y - depthPoint.Y, 2)) > maxDist / 8))
-              if ((startPoint.Y - ySeed < 0) && (startPoint.Y < depthPoint.Y) && (Math.Sqrt(Math.Pow(startPoint.X - depthPoint.X, 2) + Math.Pow(startPoint.Y - depthPoint.Y, 2)) > maxDist / 8))
+             
+              if ((startPoint.Y - handCentroid.Y < 0) && (startPoint.Y < depthPoint.Y) && (Math.Sqrt(Math.Pow(startPoint.X - depthPoint.X, 2) + Math.Pow(startPoint.Y - depthPoint.Y, 2)) > Math.Abs(startPoint.Y - handCentroid.Y)/5))
               {
                   double angle1 = Math.Atan2(startPoint.Y - depthPoint.Y, startPoint.X - depthPoint.X) * 180.0 / Math.PI;
                   double angle2 = Math.Atan2(endPoint.Y - depthPoint.Y, endPoint.X - depthPoint.X) * 180.0 / Math.PI;
@@ -295,16 +362,16 @@ namespace votragsfinger2Back
                   if (angle2 < 0) angle2 += 360;
 
                   if(Math.Abs(angle1 - angle2) < 90)
-                    fingerAmount++;
+                      featureAmount++;
                   if (isVisOutputActive)
-                       visOutput.Draw(startDepthLine, new Bgr(System.Drawing.Color.Green), 2);
+                      visOutput.Draw(new CircleF(startPoint, 3), new Bgr(System.Drawing.Color.Green), 2);
               }
 
           }
-           
 
 
-           return getHandStateFromFingerAmount(fingerAmount);
+
+          return getHandStateFromFingerAmount(featureAmount);
        }
 
 
@@ -330,9 +397,12 @@ namespace votragsfinger2Back
         /// </summary>
         /// <param name="fingers">amount of visible fingers - extracted from segmented hand</param>
         /// <returns>HandState</returns>
-        private Microsoft.Kinect.HandState getHandStateFromFingerAmount(int fingers)
+        private Microsoft.Kinect.HandState getHandStateFromFingerAmount(int featureAmount)
         {
-            filterHandState.Enqueue((byte)fingers);
+
+            if (featureAmount > 1) featureAmount = 2;
+
+            filterHandState.Enqueue((byte)featureAmount);
 
             byte[] arr = filterHandState.ToArray();
             
@@ -341,7 +411,7 @@ namespace votragsfinger2Back
             if (isVisOutputActive)
             {
                 MCvFont font = new MCvFont(Emgu.CV.CvEnum.FONT.CV_FONT_HERSHEY_DUPLEX, 2d, 2d);
-                visOutput.Draw(fingers.ToString() + "::" + mode.ToString(), ref font, new Point(50, 150), new Bgr(System.Drawing.Color.White));
+                visOutput.Draw(featureAmount.ToString() + "::" + mode.ToString(), ref font, new Point(50, 150), new Bgr(System.Drawing.Color.White));
             }
 
             if (mode > 1)
