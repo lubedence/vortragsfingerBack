@@ -324,6 +324,11 @@ namespace votragsfinger2
                                     //just for debugging purposes: if activated in HandSegmentation.cs, a not-null image of the segmented hand with some graphical information is returned
                                     testImg.Source = BitmapSourceConvert.ToBitmapSource(phiz.getVisOutputFromHandSegmentation(phiz.getInteractionHand()));
                                 }
+                                else
+                                {
+                                    interactionCursorBack.Visibility = Visibility.Hidden;
+                                    currentCursorBackHandState = HandState.Unknown;
+                                }
                             }
                         }
                     else
@@ -400,6 +405,7 @@ namespace votragsfinger2
 
             if (currentCursorBackHandState != hs)
             {
+                currentCursorBackHandState = hs;
                 if (hs == HandState.Open)
                 {
                     interactionCursorBack.Source = new BitmapImage(new Uri("img/cursor.png", UriKind.Relative));
@@ -435,11 +441,9 @@ namespace votragsfinger2
             }
 
 
-            //Todo: width&height is always NaN
-            double offsetX = interactionCursorBack.Width;
-            double offsetY = interactionCursorBack.Height;
-            if (double.IsNaN(offsetX) || double.IsNaN(offsetY))
-                offsetX = offsetY = 0;
+            //Todo: calc offset relative to icon-size
+            double offsetX = 20;
+            double offsetY = 20;
 
             interactionCursorBack.Margin = new Thickness(p.X - offsetX / 2, p.Y - offsetY / 2, 0, 0);
         }

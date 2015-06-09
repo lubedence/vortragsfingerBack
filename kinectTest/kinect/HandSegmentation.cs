@@ -9,6 +9,7 @@ using Emgu.CV.Structure;
 using Emgu.CV;
 using votragsfinger2Back.util;
 using votragsfinger2.util;
+using votragsfinger2Back.kinect;
 
 namespace votragsfinger2Back
 {
@@ -50,6 +51,9 @@ namespace votragsfinger2Back
         private Image<Gray, byte> handSegment;
 
         private Point handCentroid;
+        private PointF handCentroidSmoothed;
+        private DoubleExponentialFilter interactingPointFilter;
+
         /// <summary>
         /// Init
         /// </summary>
@@ -60,6 +64,8 @@ namespace votragsfinger2Back
             this.width = width;
             this.height = height;
             isVisOutputActive = UserSettings.Instance.IS_DEBUG_OUTPUT;
+
+            interactingPointFilter = new DoubleExponentialFilter(0.7f, 0.3f, 0.25f, 51f, 42f);
 
             isVisOutputActive = true;
         }
@@ -148,7 +154,7 @@ namespace votragsfinger2Back
             }
 
          handSegment = null;
-         if (maxX - minX < 0)
+         if (maxX - minX < 15 || maxY - minY <15)
              return false;
 
          handSegment = new Image<Gray, byte>(pixels);
@@ -174,7 +180,11 @@ namespace votragsfinger2Back
         public PointF getNewHandCenter()
         {
             if (handSegment == null) return new PointF(0, 0);
-            return new PointF(handCentroid.X + handSegment.ROI.X, handCentroid.Y + handSegment.ROI.Y);
+
+            interactingPointFilter.UpdateFilter(new PointF((float)(handCentroidSmoothed.X * 0.8 + handCentroid.X * 0.2), (float)(handCentroidSmoothed.Y * 0.8 + handCentroid.Y * 0.2)));
+            handCentroidSmoothed = new PointF(interactingPointFilter.getFilteredPoint().X, interactingPointFilter.getFilteredPoint().Y);
+
+            return new PointF(handCentroidSmoothed.X + handSegment.ROI.X, handCentroidSmoothed.Y + handSegment.ROI.Y);
         }
 
 

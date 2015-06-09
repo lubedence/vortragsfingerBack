@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Media3D;
+using votragsfinger2Back.kinect;
 
 namespace votragsfinger2Back
 {
@@ -153,11 +154,11 @@ namespace votragsfinger2Back
 
             if (interactingHand == HandType.NONE)
             {
-                if (distR > 0)
+                if (distR > 0.2) //0.2m over head
                 {
                     interactingHand = handRightType;
                 }
-                else if (distL > 0)
+                else if (distL > 0.2) //0.2m over head
                 {
                     interactingHand = handLeftType;
                 }
@@ -200,7 +201,7 @@ namespace votragsfinger2Back
             else if (distV3.Y > PHIZ_DIMENSION.Y)
             {
                 //hand position is way under the Phiz boundary (y-axis) --> stop current hand interaction
-                if (distV3.Y > PHIZ_DIMENSION.Y * 1.5)
+                if (distV3.Y > PHIZ_DIMENSION.Y * 1.3)
                 {
                     interactingHand = HandType.NONE;
                     return false;
@@ -215,9 +216,8 @@ namespace votragsfinger2Back
             double scale = xScale;
             if (yScale > xScale) scale = yScale;
 
-            Point _tmp = new Point(distV3.X * scale, distV3.Y * scale); //screen coordinates of interacting hand
-            interactingPoint = new Point(interactingPoint.X * 0.9 + _tmp.X * 0.1, interactingPoint.Y * 0.9 + _tmp.Y * 0.1);
-            //interactingPoint = _tmp;
+            Point pTmp = new Point(distV3.X * scale, distV3.Y * scale);
+            interactingPoint = new Point(interactingPoint.X * 0.75 + pTmp.X * 0.25, interactingPoint.Y * 0.75 + pTmp.Y * 0.25); //screen coordinates of interacting hand
             return true; 
         }
 

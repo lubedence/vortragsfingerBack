@@ -122,6 +122,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="kinect\DoubleExponentialFilter.cs" />
     <Compile Include="kinect\HandSegmentation.cs" />
     <Compile Include="kinect\KinectJointStabilization.cs" />
     <Compile Include="kinect\KinectJointFilter.cs" />
