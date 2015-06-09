@@ -172,8 +172,13 @@ namespace votragsfinger2
             }
             else
             {
-                //rough-and-ready way to disable kinect region (hide the cursor)
+                //rough-and-ready way to disable kinect region ( == hide the cursor)
                 kinectRegion.CursorSpriteSheetDefinition = new CursorSpriteSheetDefinition(new Uri("img/cursor.png", UriKind.Relative), 0, 0, 0, 0);
+
+                if (UserSettings.Instance.IS_DEBUG_OUTPUT)
+                {
+                    visDebug.Visibility = Visibility.Visible;
+                }
 
                 //init own phiz and hand state recognition
                 phiz = new Phiz(UserSettings.Instance.IS_KINECT_BEHIND_USER); 

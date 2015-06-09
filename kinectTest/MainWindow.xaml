@@ -27,18 +27,18 @@
 
             </Grid>
 
-            <Grid  x:Name="debugDataGrid" Panel.ZIndex="4" Margin="20">
-
-            </Grid>
-
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Bottom" Orientation="Horizontal" Panel.ZIndex="10" Background="#7F6BA5D6">
                 <Button Content="Menu" Width="40" Height="20" Margin="5,5,0,10" Click="Menu_Button_Click"/>
                 <CheckBox Content="erase" Height="20" Margin="30,0,5,0" Checked="Activate_Mouse_Erase_Mode" Unchecked="Activate_Mouse_Draw_Mode"/>
 
             </StackPanel>
-            <Image x:Name="testImg" HorizontalAlignment="Left" Height="424" Margin="20,20,0,0" VerticalAlignment="Top" Width="512" Panel.ZIndex="10"/>
+            
 
             <Image x:Name="interactionCursorBack" Panel.ZIndex="100" HorizontalAlignment="Left" VerticalAlignment="Top" Source="img/cursor.png" MaxWidth="100" MaxHeight="100" Visibility="Hidden"/>
+          
+            <Grid x:Name="visDebug" HorizontalAlignment="Left" Height="300" VerticalAlignment="Top" Width="300" Background="Black" Visibility="Hidden">
+                <Image x:Name="testImg" HorizontalAlignment="Left" Height="250" Margin="25,25,0,0" VerticalAlignment="Top" Width="250" Panel.ZIndex="10"/>
+            </Grid>
 
         </Grid>
     </k:KinectRegion>

@@ -50,9 +50,10 @@ namespace votragsfinger2Back
         //hand segment (binary)
         private Image<Gray, byte> handSegment;
 
+        //centroid of segmented hand
         private Point handCentroid;
         private PointF handCentroidSmoothed;
-        private DoubleExponentialFilter interactingPointFilter;
+        private DoubleExponentialFilter handCentroidFilter;
 
         /// <summary>
         /// Init
@@ -65,9 +66,7 @@ namespace votragsfinger2Back
             this.height = height;
             isVisOutputActive = UserSettings.Instance.IS_DEBUG_OUTPUT;
 
-            interactingPointFilter = new DoubleExponentialFilter(0.7f, 0.3f, 0.25f, 51f, 42f);
-
-            isVisOutputActive = true;
+            handCentroidFilter = new DoubleExponentialFilter(0.7f, 0.3f, 0.25f, 51f, 42f);
         }
 
 
@@ -174,19 +173,19 @@ namespace votragsfinger2Back
                 CvInvoke.cvDistTransform(binary_image, distTransform, Emgu.CV.CvEnum.DIST_TYPE.CV_DIST_L2, 3, null, IntPtr.Zero);
                 CvInvoke.cvMinMaxLoc(distTransform, ref min_value, ref max_value, ref min_location, ref handCentroid, IntPtr.Zero);
             }
+
+            //smoothing centroid
+            handCentroidFilter.UpdateFilter(new PointF((float)(handCentroidSmoothed.X * 0.9 + handCentroid.X * 0.1), (float)(handCentroidSmoothed.Y * 0.9 + handCentroid.Y * 0.1)));
+            handCentroidSmoothed = new PointF(handCentroidFilter.getFilteredPoint().X, handCentroidFilter.getFilteredPoint().Y);
         }
 
 
-        public PointF getNewHandCenter()
+        public PointF getFilteredHandCenter()
         {
             if (handSegment == null) return new PointF(0, 0);
 
-            interactingPointFilter.UpdateFilter(new PointF((float)(handCentroidSmoothed.X * 0.8 + handCentroid.X * 0.2), (float)(handCentroidSmoothed.Y * 0.8 + handCentroid.Y * 0.2)));
-            handCentroidSmoothed = new PointF(interactingPointFilter.getFilteredPoint().X, interactingPointFilter.getFilteredPoint().Y);
-
             return new PointF(handCentroidSmoothed.X + handSegment.ROI.X, handCentroidSmoothed.Y + handSegment.ROI.Y);
         }
-
 
         /// <summary>
         /// Starting from hand-joint position (x,y) try to segment hand using seed fill algo. 
@@ -207,6 +206,10 @@ namespace votragsfinger2Back
             ySeed = y;
 
             seedFill(x, y, x2, y2);
+
+            if (handSegment == null) return;
+
+            FindCentroidByDistanceTrans(handSegment);
         }
 
         //just for debug purposes
@@ -250,9 +253,6 @@ namespace votragsfinger2Back
  
             using (MemStorage storage = new MemStorage())
             {
-
-                FindCentroidByDistanceTrans(handSegment);
-
                 //search biggest contour in image
                 //could be removed - there should always be just one blob(==segmented hand)
                 Contour<Point> contours = handSegment.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_LIST, storage);
@@ -418,10 +418,10 @@ namespace votragsfinger2Back
             
             int mode = arr.GroupBy(x => x).OrderByDescending(g => g.Count()).First().Key;
 
-            if (isVisOutputActive)
+            if (false && isVisOutputActive)
             {
-                MCvFont font = new MCvFont(Emgu.CV.CvEnum.FONT.CV_FONT_HERSHEY_DUPLEX, 2d, 2d);
-                visOutput.Draw(featureAmount.ToString() + "::" + mode.ToString(), ref font, new Point(50, 150), new Bgr(System.Drawing.Color.White));
+                MCvFont font = new MCvFont(Emgu.CV.CvEnum.FONT.CV_FONT_HERSHEY_DUPLEX, 1d, 1d);
+                visOutput.Draw(featureAmount.ToString() + "::" + mode.ToString(), ref font, new Point(10, 10), new Bgr(System.Drawing.Color.White));
             }
 
             if (mode > 1)

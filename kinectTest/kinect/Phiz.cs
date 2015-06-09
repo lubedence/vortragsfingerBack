@@ -45,7 +45,7 @@ namespace votragsfinger2Back
         //dimension of the Phiz
         private Vector3D PHIZ_DIMENSION = new Vector3D(90, 60, 0); //TODO: dimension relative to sensor distance
         //Phiz offset from origin(=originJointType)
-        private Vector3D PHIZ_OFFSET = new Vector3D(50, 20, 0); //TODO: offset relative to sensor distance
+        private Vector3D PHIZ_OFFSET = new Vector3D(50, 10, 0); //TODO: offset relative to sensor distance
 
         //segment hands in each frame to extract HandState(=hand gestures)
         private HandSegmentation handLeftSegmentation = new HandSegmentation(512,424);
@@ -154,11 +154,11 @@ namespace votragsfinger2Back
 
             if (interactingHand == HandType.NONE)
             {
-                if (distR > 0.2) //0.2m over head
+                if (distR > 0.1) //0.1m over head
                 {
                     interactingHand = handRightType;
                 }
-                else if (distL > 0.2) //0.2m over head
+                else if (distL > 0.1) //0.1m over head
                 {
                     interactingHand = handLeftType;
                 }
@@ -173,15 +173,17 @@ namespace votragsfinger2Back
 
             if (interactingHand == handRightType)
             {
-                handRightV3.X = handRightSegmentation.getNewHandCenter().X;
-                handRightV3.Y = handRightSegmentation.getNewHandCenter().Y;
+                handRightV3.X = handRightSegmentation.getFilteredHandCenter().X;
+                handRightV3.Y = handRightSegmentation.getFilteredHandCenter().Y;
+
                 distV3 = (handRightV3 - (originJointV3 - PHIZ_OFFSET) );
                 distV3.X *= -1;
             }
             else
             {
-                handLeftV3.X = handLeftSegmentation.getNewHandCenter().X;
-                handLeftV3.Y = handLeftSegmentation.getNewHandCenter().Y;
+                handLeftV3.X = handLeftSegmentation.getFilteredHandCenter().X;
+                handLeftV3.Y = handLeftSegmentation.getFilteredHandCenter().Y;
+
                 Vector3D _phiz_offset = PHIZ_OFFSET;
                 _phiz_offset.X *= -1;
                 distV3 = (handLeftV3 - (originJointV3 - _phiz_offset));

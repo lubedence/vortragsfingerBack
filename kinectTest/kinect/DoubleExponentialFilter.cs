@@ -7,6 +7,12 @@ using System.Threading.Tasks;
 
 namespace votragsfinger2Back.kinect
 {
+
+    /// <summary>
+    /// QUICK MODIFICATION OF KinectJointFilter.cs 
+    /// Filters one point
+    /// </summary>
+
     class DoubleExponentialFilter{
     public struct TRANSFORM_SMOOTH_PARAMETERS
         {
