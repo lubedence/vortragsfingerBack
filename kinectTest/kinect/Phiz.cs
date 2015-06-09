@@ -43,9 +43,9 @@ namespace votragsfinger2Back
         private KinectJointFilter allJointFilterForHandSegmentation = new KinectJointFilter();
 
         //dimension of the Phiz
-        private Vector3D PHIZ_DIMENSION = new Vector3D(90, 60, 0); //TODO: dimension relative to sensor distance
+        private Vector3D PHIZ_DIMENSION = new Vector3D(75, 60, 0); //TODO: dimension relative to sensor distance
         //Phiz offset from origin(=originJointType)
-        private Vector3D PHIZ_OFFSET = new Vector3D(50, 10, 0); //TODO: offset relative to sensor distance
+        private Vector3D PHIZ_OFFSET = new Vector3D(60, 10, 0); //TODO: offset relative to sensor distance
 
         //segment hands in each frame to extract HandState(=hand gestures)
         private HandSegmentation handLeftSegmentation = new HandSegmentation(512,424);
@@ -73,11 +73,6 @@ namespace votragsfinger2Back
         private Vector3D convertToV3(CameraSpacePoint csp)
         {
             return new Vector3D(csp.X * backtrackingFactor, csp.Y, csp.Z);
-        }
-
-        private Vector3D convertToV3(System.Drawing.PointF pf)
-        {
-            return new Vector3D(pf.X, pf.Y, 0);
         }
 
         private Vector3D convertToV3(DepthSpacePoint dsp)
@@ -176,8 +171,10 @@ namespace votragsfinger2Back
                 handRightV3.X = handRightSegmentation.getFilteredHandCenter().X;
                 handRightV3.Y = handRightSegmentation.getFilteredHandCenter().Y;
 
-                distV3 = (handRightV3 - (originJointV3 - PHIZ_OFFSET) );
-                distV3.X *= -1;
+                Vector3D _phiz_offset = PHIZ_OFFSET;
+                _phiz_offset.X *= backtrackingFactor;
+                distV3 = (handRightV3 - (originJointV3 - _phiz_offset));
+                distV3.X *= -1 * backtrackingFactor;
             }
             else
             {
@@ -185,8 +182,9 @@ namespace votragsfinger2Back
                 handLeftV3.Y = handLeftSegmentation.getFilteredHandCenter().Y;
 
                 Vector3D _phiz_offset = PHIZ_OFFSET;
-                _phiz_offset.X *= -1;
+                _phiz_offset.X *= -1 * backtrackingFactor;
                 distV3 = (handLeftV3 - (originJointV3 - _phiz_offset));
+                distV3.X *= backtrackingFactor;
             }
 
             

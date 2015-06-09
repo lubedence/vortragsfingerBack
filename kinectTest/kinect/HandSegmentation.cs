@@ -66,7 +66,7 @@ namespace votragsfinger2Back
             this.height = height;
             isVisOutputActive = UserSettings.Instance.IS_DEBUG_OUTPUT;
 
-            handCentroidFilter = new DoubleExponentialFilter(0.7f, 0.3f, 0.25f, 51f, 42f);
+            handCentroidFilter = new DoubleExponentialFilter(0.5f, 0.3f, 0.1f, 5f, 10f);
         }
 
 
@@ -158,7 +158,8 @@ namespace votragsfinger2Back
 
          handSegment = new Image<Gray, byte>(pixels);
          handSegment.ROI = new Rectangle(minX, minY, maxX - minX, maxY - minY);
-         return true;
+         
+            return true;
         }
 
         private void FindCentroidByDistanceTrans(Image<Gray, byte> binary_image)
@@ -175,8 +176,10 @@ namespace votragsfinger2Back
             }
 
             //smoothing centroid
-            handCentroidFilter.UpdateFilter(new PointF((float)(handCentroidSmoothed.X * 0.9 + handCentroid.X * 0.1), (float)(handCentroidSmoothed.Y * 0.9 + handCentroid.Y * 0.1)));
+            handCentroidFilter.UpdateFilter(new PointF((float)(handCentroidSmoothed.X * 0.7 + (handCentroid.X + handSegment.ROI.X) * 0.3), (float)(handCentroidSmoothed.Y * 0.7 + (handCentroid.Y + handSegment.ROI.Y) * 0.3)));
             handCentroidSmoothed = new PointF(handCentroidFilter.getFilteredPoint().X, handCentroidFilter.getFilteredPoint().Y);
+
+            //handCentroidSmoothed = new PointF((float)(handCentroidSmoothed.X * 0.9 + (handCentroid.X + handSegment.ROI.X) * 0.1), (float)(handCentroidSmoothed.Y * 0.9 + (handCentroid.Y + handSegment.ROI.Y) * 0.1));
         }
 
 
@@ -184,7 +187,8 @@ namespace votragsfinger2Back
         {
             if (handSegment == null) return new PointF(0, 0);
 
-            return new PointF(handCentroidSmoothed.X + handSegment.ROI.X, handCentroidSmoothed.Y + handSegment.ROI.Y);
+            //return new PointF(handCentroidSmoothed.X + handSegment.ROI.X, handCentroidSmoothed.Y + handSegment.ROI.Y);
+            return handCentroidSmoothed;
         }
 
         /// <summary>
