@@ -85,6 +85,7 @@ namespace votragsfinger2Back
             Queue<Point> queue = new Queue<Point>();
             queue.Enqueue(new Point(x, y));
 
+            //seed fill
             while (queue.Count > 0)
             {
                 Point p = queue.Dequeue();
@@ -158,7 +159,7 @@ namespace votragsfinger2Back
              return false;
 
          handSegment = new Image<Gray, byte>(pixels);
-         handSegment.ROI = new Rectangle(minX, minY, maxX - minX, maxY - minY);
+         handSegment.ROI = new Rectangle(minX, minY, maxX - minX, maxY - minY); //further calculations just in this region of the image
          
             return true;
         }

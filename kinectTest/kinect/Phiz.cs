@@ -15,7 +15,7 @@ namespace votragsfinger2Back
     /// <summary>
     /// TODO: improvement needed regarding:
     /// a) more advanced phiz-area (not just simple rectangular area)
-    /// b) sometimes hand joints include heavy jitter if user is tracked from behind --> eg. not use the hand-joint provided by KinectSdk, but calculate own position of hand in HandSegmentation.cs
+    /// b) sometimes hand joints include heavy jitter if user is tracked from behind
     /// </summary>
     class Phiz
     {

@@ -36,6 +36,7 @@ Filtered values that would be more than this radius from the raw data are clampe
      * 
      * 
      * More information: https://msdn.microsoft.com/en-us/library/jj131429.aspx (Skeletal Joint Smoothing White Paper)
+     * Original code from: https://social.msdn.microsoft.com/Forums/en-US/ffbc8ec7-7551-4462-88aa-2fab69eac38f/joint-smoothing-code-c-errors-in-kinectjointfilter-class
      * */
 
 
