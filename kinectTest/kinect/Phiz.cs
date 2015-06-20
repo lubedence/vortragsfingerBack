@@ -132,7 +132,7 @@ namespace votragsfinger2Back
 
             //calc HandState for both hands
             allJointFilterForHandSegmentation.UpdateFilter(trackedBody);
-            handStateLeft = calcHandState(bif, handLeftType);
+            //handStateLeft = calcHandState(bif, handLeftType);
             handStateRight = calcHandState(bif, handRightType);
 
             //some joint filtering

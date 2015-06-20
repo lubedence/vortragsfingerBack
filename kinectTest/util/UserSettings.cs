@@ -35,6 +35,7 @@ namespace votragsfinger2.util
         public bool IS_KINECT_BEHIND_USER = false;
         public bool IS_KINECTREGION_USED = true;
         public bool IS_DEBUG_OUTPUT = false;
+        public bool IS_NO_DELETE_GESTURE = true;
 
         private static UserSettings instance;
 
@@ -98,6 +99,7 @@ namespace votragsfinger2.util
 
                     GESTURE_MIN_TIME = source.Configs["Gestures"].GetInt("Minimum time", GESTURE_MIN_TIME);
                     GESTURE_MIN_CONFIDENCE = source.Configs["Gestures"].GetDouble("Minimum confidence", GESTURE_MIN_CONFIDENCE);
+                    IS_NO_DELETE_GESTURE = source.Configs["Gestures"].GetBoolean("no delete gesture", IS_NO_DELETE_GESTURE);
 
                     LINE_THICKNESS = source.Configs["Drawing"].GetInt("Line thickness", LINE_THICKNESS);
                     LINE_RESUME_THRESHOLD = source.Configs["Drawing"].GetInt("Resume threshold", LINE_RESUME_THRESHOLD);
@@ -150,6 +152,7 @@ namespace votragsfinger2.util
                 config.Set("Kinect behind user", IS_KINECT_BEHIND_USER.ToString());
                 config.Set("Use KinectRegion", IS_KINECTREGION_USED.ToString());
                 config.Set("Debug output", IS_DEBUG_OUTPUT.ToString());
+                config.Set("no delete gesture", IS_NO_DELETE_GESTURE.ToString());
 
                 config = source.AddConfig("Gestures");
                 config.Set("Minimum time", GESTURE_MIN_TIME);

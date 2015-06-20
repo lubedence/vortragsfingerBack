@@ -15,13 +15,13 @@ namespace votragsfinger2Back
 {
     /// <summary>
     /// TODO: improvement needed regarding:
-    /// a) Hand segmentation: eg. Depth based thresholding, remove segmented parts below hand wrist, ...
+    /// a) Hand segmentation: eg. Depth based thresholding
     /// b) Finger detection: better heuristics (or machine learning) to map hand/finger pose to HandState(Closed, Open, Lasso)
     /// 
     /// - Segments Hand from BodyIndexFrame using the position of the hand joint as well as the relation/proportion to the elbow. see above a)
-    /// - Interpret segmented hand (eg. convex hull, defects, enclosingCircle, todo: k-curvature) and recognize hand/finger pose and map to HandState. see above b)
+    /// - Interpret segmented hand (eg. convex hull, defects, enclosingCircle, ...) and recognize hand/finger pose and map to HandState. see above b)
     /// 
-    /// The current use of this class is to calculate the HandState of a tracked hand. Could be extended to return a stable hand-joint (center of hand).
+    /// The former use of this class was to calculate the HandState of a tracked hand. Was extended to return a stable hand-joint (center of hand).
     /// </summary>
     class HandSegmentation
     {
@@ -54,6 +54,7 @@ namespace votragsfinger2Back
         private Point handCentroid;
         private PointF handCentroidSmoothed;
         private DoubleExponentialFilter handCentroidFilter;
+        private double centroidDistToContour = 0;
 
         /// <summary>
         /// Init
@@ -66,7 +67,7 @@ namespace votragsfinger2Back
             this.height = height;
             isVisOutputActive = UserSettings.Instance.IS_DEBUG_OUTPUT;
 
-            handCentroidFilter = new DoubleExponentialFilter(0.5f, 0.3f, 0.1f, 5f, 10f);
+            handCentroidFilter = new DoubleExponentialFilter(0.5f, 0.3f, 0, 5f, 10f);
         }
 
 
@@ -173,6 +174,7 @@ namespace votragsfinger2Back
             {
                 CvInvoke.cvDistTransform(binary_image, distTransform, Emgu.CV.CvEnum.DIST_TYPE.CV_DIST_L2, 3, null, IntPtr.Zero);
                 CvInvoke.cvMinMaxLoc(distTransform, ref min_value, ref max_value, ref min_location, ref handCentroid, IntPtr.Zero);
+                centroidDistToContour = max_value;
             }
 
             //smoothing centroid
@@ -286,7 +288,7 @@ namespace votragsfinger2Back
                     //extract minimum area rectangle
                     box = biggestContour.GetMinAreaRect();
                     //PointF[] points = box.GetVertices();
-
+                    
                     //Debug
                     if (isVisOutputActive)
                         visOutput.Draw(new CircleF(handCentroid, 3), new Bgr(200, 125, 75), 2);
@@ -350,7 +352,7 @@ namespace votragsfinger2Back
                    //visOutput.Draw(minEncCircleDepth, new Bgr(100, 125, 75), 2);
                    //visOutput.Draw(minEncCircleStart, new Bgr(200, 125, 75), 2);
                }
-        }
+            }
 
            
           for (int i = 0; i < defects.Total; i++)
@@ -384,6 +386,19 @@ namespace votragsfinger2Back
           }
 
 
+          //if hand has quadratic form, likely to be closed. if form is rectangular, likely to be not closed.
+          double _dist = 0;
+          for (int i = 0; i < filteredHull.Total; i++)
+          {
+              Point _p = filteredHull[i];
+              if (_p.Y < handCentroid.Y && _dist < getDist(_p.X, _p.Y, handCentroid.X, handCentroid.Y))
+              {
+                  _dist = getDist(_p.X, _p.Y, handCentroid.X, handCentroid.Y);
+              }
+          }
+
+          if (_dist / centroidDistToContour > 1.8 && featureAmount == 0)
+              featureAmount = 2;
 
           return getHandStateFromFingerAmount(featureAmount);
        }
@@ -428,12 +443,23 @@ namespace votragsfinger2Back
                 visOutput.Draw(featureAmount.ToString() + "::" + mode.ToString(), ref font, new Point(10, 10), new Bgr(System.Drawing.Color.White));
             }
 
-            if (mode > 1)
-                return Microsoft.Kinect.HandState.Open;
-            else if (mode > 0)
-                return Microsoft.Kinect.HandState.Lasso;
-            else
-                return Microsoft.Kinect.HandState.Closed;
+            //Lasso gesture not working well
+            if (!UserSettings.Instance.IS_NO_DELETE_GESTURE)
+            {
+                if (mode > 1)
+                    return Microsoft.Kinect.HandState.Open;
+                else if (mode > 0)
+                    return Microsoft.Kinect.HandState.Lasso;
+                else
+                    return Microsoft.Kinect.HandState.Closed;
+            }
+            else //recognize just two, not three gestures. works better
+            {
+                if (mode > 0)
+                    return Microsoft.Kinect.HandState.Open;
+                else
+                    return Microsoft.Kinect.HandState.Lasso;
+            }
 
         }
 
