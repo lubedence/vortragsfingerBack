@@ -61,4 +61,4 @@ to switch gesture action
 
 ---------
 
-##### This is a prototype - not a finished program
+This is a prototype - not a finished program
